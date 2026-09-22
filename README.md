@@ -1,81 +1,88 @@
 # jev-in-codex
 
-Use [Jev](https://docs.typesafe.ai/) to rank capabilities and evidence inside
-an existing Codex workflow. A local MCP server exposes three tools; a companion
-skill explains when to use them.
+Usá [Jev](https://docs.typesafe.ai/) para ordenar capacidades y evidencia dentro
+de un flujo de trabajo existente de Codex. Un servidor MCP local expone tres
+herramientas y una habilidad complementaria explica cuándo usarlas.
 
-**Status: experimental MVP.** Functional protocol and boundary tests are
-included. Ranking quality and time/token savings have not been benchmarked.
-This is an independent integration, not an official OpenAI or TypeSafe product.
+**Estado: MVP experimental.** Incluye pruebas funcionales de protocolo y de
+límites. La calidad del ranking y los ahorros de tiempo o tokens no han sido
+evaluados con benchmarks. Es una integración independiente, no un producto
+oficial de OpenAI ni de TypeSafe.
 
-## What it does
+## Qué hace
 
-| Tool | Input | Output |
+| Herramienta | Entrada | Salida |
 | --- | --- | --- |
-| `jev_select_capability` | Objective and a supplied catalog of tools/skills | Ranked candidates, with an option to recommend none |
-| `jev_search` | Question, workspace scope, optional query terms | Reranked code/docs excerpts with paths and line numbers |
-| `jev_triage` | Question and a saved output artifact | Relevant original excerpts, exact duplicate groups, and coverage |
+| `jev_select_capability` | Objetivo y un catálogo provisto de herramientas o habilidades | Candidatos ordenados, con opción de no recomendar ninguno |
+| `jev_search` | Pregunta, alcance del workspace y términos de consulta opcionales | Extractos de código o documentación reordenados, con rutas y números de línea |
+| `jev_triage` | Pregunta y un artefacto de salida guardado | Extractos originales relevantes, grupos de duplicados exactos y cobertura |
 
-Codex supplies the objective and makes the final decision. The server retrieves
-bounded candidates locally, asks Jev relevance questions, and returns original
-evidence. It neither executes selected capabilities nor intercepts arbitrary
-Codex tool calls. It does not replace Codex compaction or expose Codex's internal
-context/tool catalog.
+Codex aporta el objetivo y toma la decisión final. El servidor recupera
+candidatos acotados localmente, le hace preguntas de relevancia a Jev y devuelve
+evidencia original. No ejecuta las capacidades seleccionadas ni intercepta
+llamadas arbitrarias a herramientas de Codex. Tampoco reemplaza la compactación
+de Codex ni expone su catálogo interno de contexto o herramientas.
 
 ```text
-Codex → MCP tool → local candidates → Jev relevance evaluation
-                 ← ranked original evidence + coverage ←
+Codex → herramienta MCP → candidatos locales → evaluación de relevancia de Jev
+                                      ← evidencia original ordenada + cobertura ←
 ```
 
-The first triage version ranks passages and groups identical chunks. Semantic
-failure grouping and root-cause classification are future work.
+La primera versión de triage ordena pasajes y agrupa fragmentos idénticos. La
+agrupación semántica de fallas y la clasificación de causas raíz quedan para
+trabajo futuro.
 
 ## Demo
 
-![Animated local demo showing capability selection, source search, and log triage](docs/assets/jev-demo.gif)
+![Demostración local animada de selección de capacidades, búsqueda de código y triage de logs](docs/assets/jev-demo.gif)
 
-Animated replay of actual MCP results using synthetic data and simulated TypeSafe
-responses. Playback is paced for readability; this is not a live Codex UI capture
-or a latency benchmark. [Static preview](docs/assets/jev-demo.png).
+Reproducción animada de resultados MCP reales con datos sintéticos y respuestas
+simuladas de TypeSafe. La reproducción se ralentizó para facilitar la lectura;
+no es una captura en vivo de la UI de Codex ni un benchmark de latencia.
+[Vista previa estática](docs/assets/jev-demo.png).
 
-## Install
+## Instalación
 
-Give this prompt to your Codex session, opened in the project you want to use:
+Entregale este prompt a tu sesión de Codex, abierta en el proyecto donde querés
+usar la integración:
 
 ```text
-Install https://github.com/teempai/jev-in-codex for the current project using
-its docs/INSTALL.md. Set up dependencies, the local Codex plugin, MCP connection,
-and bundled skill. Add its docs/AGENTS.jev.md guidance to my project's persistent
-Codex instructions so you know when and how to use Jev for tool/skill selection,
-context search, and output triage. Preserve existing instructions and configuration.
-Configure TypeSafe authentication privately and verify all three tools, reporting
-whether Jev or local fallback is active. Complete the setup and tell me if you
-need a private API-key entry or a Codex restart.
+Instalá la rama jev-coding-codex-tools de
+https://github.com/hernanpappa/jev-in-codex para el proyecto actual siguiendo
+docs/INSTALL.md. Configurá las dependencias, la conexión MCP local y la habilidad
+incluida. Integrá la guía de docs/AGENTS.jev.md en las instrucciones persistentes
+de mi proyecto, preservando las instrucciones y la configuración existentes, para
+que sepas cuándo y cómo usar Jev para selección de herramientas y habilidades,
+búsqueda de contexto y triage de resultados. Configurá la autenticación de
+TypeSafe de forma privada y verificá las tres herramientas; informá si está activo
+Jev o el fallback local. Completá la instalación e indicame si necesitás que
+ingrese la clave privada o que reinicie Codex.
 ```
 
-Jev uses a TypeSafe API key and sends selected code/log excerpts to TypeSafe.
-Codex handles setup; you may need to enter the key privately or restart Codex.
+Jev usa una clave de API de TypeSafe y envía a TypeSafe los extractos
+seleccionados de código o logs. Codex se ocupa de la instalación; quizás tengas
+que ingresar la clave de forma privada o reiniciar Codex.
 
 <details>
-<summary>Manual installation and configuration</summary>
+<summary>Instalación y configuración manual</summary>
 
-## Install from source
+## Instalar desde el código fuente
 
-Requires **Node.js 22+**, **npm**, and **ripgrep (`rg`)** on PATH.
+Requiere **Node.js 22+**, **npm** y **ripgrep (`rg`)** disponible en `PATH`.
 
 ```bash
-git clone https://github.com/teempai/jev-in-codex.git
+git clone --branch jev-coding-codex-tools https://github.com/hernanpappa/jev-in-codex.git
 cd jev-in-codex
 npm ci --ignore-scripts
 npm run check
 ```
 
-There is no published npm package yet. `private: true` prevents accidental npm
-publication; the source is publicly available under MIT.
+Todavía no existe un paquete publicado en npm. `private: true` evita una
+publicación accidental en npm; el código fuente es público bajo licencia MIT.
 
-### Configure Codex MCP
+### Configurar el MCP de Codex
 
-Add an entry to your Codex `config.toml`, substituting both absolute paths:
+Agregá una entrada al `config.toml` de Codex y sustituí ambas rutas absolutas:
 
 ```toml
 [mcp_servers.jev]
@@ -85,181 +92,206 @@ env_vars = ["TYPESAFE_API_KEY", "JEV_MODEL"]
 tool_timeout_sec = 90
 ```
 
-Export `TYPESAFE_API_KEY` in the environment that launches Codex. Obtain the key
-from TypeSafe; don't put it in source control or a prompt. Optionally set
-`JEV_MODEL` to a pinned model name; the default is `jev-latest`.
+Exportá `TYPESAFE_API_KEY` en el entorno que inicia Codex. Obtené la clave
+en TypeSafe; no la incluyas en el control de versiones ni en un prompt. De forma
+opcional, configurá `JEV_MODEL` con el nombre de un modelo fijado; el
+valor predeterminado es `jev-latest`.
 
-The root is mandatory, so the server cannot silently scan an unintended working
-directory. Change `--root` for another project, or omit it and set
-`JEV_WORKSPACE_ROOT` and include that name in `env_vars`. An explicit `--root`
-takes precedence. Use an absolute Node executable path if your Codex launch
-environment cannot find `node`.
+El directorio raíz es obligatorio, para que el servidor no pueda analizar
+silenciosamente un directorio de trabajo no deseado. Cambiá `--root` para
+otro proyecto, u omitilo, configurá `JEV_WORKSPACE_ROOT` e incluí ese
+nombre en `env_vars`. Un `--root` explícito tiene precedencia.
+Usá una ruta absoluta al ejecutable de Node si el entorno que inicia Codex no
+puede encontrar `node`.
 
-Without a TypeSafe key, all tools work in **local fallback mode**. This supports
-setup checks but does not demonstrate Jev's ranking quality. Normal Codex access
-and billing are unchanged. Jev requests use a separate TypeSafe API account;
-this integration does not route them through a Codex subscription.
+Sin una clave de TypeSafe, las tres herramientas funcionan en **modo de fallback
+local**. Esto permite comprobar la instalación, pero no demuestra la calidad del
+ranking de Jev. El acceso y la facturación habituales de Codex no cambian. Las
+solicitudes de Jev usan una cuenta de API de TypeSafe independiente; esta
+integración no las enruta a través de una suscripción de Codex.
 
-See the [Codex MCP documentation](https://developers.openai.com/codex/mcp/) for
-configuration and server visibility in your client.
+Consultá la [documentación de MCP para Codex](https://developers.openai.com/codex/mcp/)
+para conocer la configuración y visibilidad del servidor en tu cliente.
 
-### Add the companion skill
+### Agregar la habilidad complementaria
 
-Copy `skills/jev-assist` into your coding project's `.agents/skills/` directory
-(or your personal skills directory), then start a new Codex session. For example,
-from this repository:
+Copiá `skills/jev-assist` al directorio `.agents/skills/` de tu
+proyecto de código (o a tu directorio personal de habilidades) y luego iniciá
+una sesión nueva de Codex. Por ejemplo, desde este repositorio:
 
 ```bash
 mkdir -p /absolute/path/to/your-project/.agents/skills
 cp -R skills/jev-assist /absolute/path/to/your-project/.agents/skills/
 ```
 
-Review an existing skill directory before replacing it. The skill uses Jev only
-when selection or filtering is useful; simple exact searches stay with `rg`.
+Revisá un directorio de habilidades existente antes de reemplazarlo. La habilidad
+usa Jev sólo cuando seleccionar o filtrar resulta útil; las búsquedas exactas
+simples siguen usando `rg`.
 
-### Optional plugin packaging
+### Empaquetado opcional como plugin
 
-The repository includes a legacy-compatible `.codex-plugin/plugin.json` and
-`.mcp.json` bundling the same skill and MCP server. For local plugin development,
-run `npm link` after building so `jev-in-codex` is on PATH. Set
-`JEV_WORKSPACE_ROOT` to the coding project and export `TYPESAFE_API_KEY` in the
-Codex launch environment. The manifest forwards these variables to the server.
+El repositorio incluye `.codex-plugin/plugin.json` y `.mcp.json`
+compatibles con el formato heredado; ambos agrupan la misma habilidad y el mismo
+servidor MCP. Para desarrollar el plugin localmente, ejecutá `npm link`
+después de compilar, de modo que `jev-in-codex` quede disponible en
+`PATH`. Configurá `JEV_WORKSPACE_ROOT` con el proyecto de
+código y exportá `TYPESAFE_API_KEY` en el entorno que inicia Codex. El
+manifiesto reenvía esas variables al servidor.
 
-You can then add the clone to your own Codex plugin marketplace using the
-[plugin authoring workflow](https://developers.openai.com/plugins/build/plugins).
-The direct MCP configuration above is the tested transport path. Plugin UI
-installation is not yet end-to-end verified, and a plugin install does not
-install Node, dependencies, or ripgrep. Choose one installation path to avoid
-duplicate tools/skills. This repository is not listed in the public plugin
-directory and does not modify your Codex configuration automatically.
+Después podés agregar el clon a tu propio marketplace de plugins de Codex con el
+[flujo de creación de plugins](https://developers.openai.com/plugins/build/plugins).
+La configuración MCP directa anterior es el transporte probado. La instalación
+desde la UI del plugin todavía no se verificó de extremo a extremo, y una
+instalación del plugin no instala Node, dependencias ni ripgrep. Elegí un único
+camino de instalación para no duplicar herramientas ni habilidades. Este
+repositorio no aparece en el directorio público de plugins y no modifica
+automáticamente tu configuración de Codex.
 
 </details>
 
-## Examples
+## Ejemplos
 
-Ask Codex: “Use Jev to select between these available capabilities for tracing
-why requests time out.” The MCP call can look like:
+Pedile a Codex: “Usá Jev para seleccionar entre estas capacidades disponibles al
+rastrear por qué las solicitudes agotan su tiempo de espera”. La llamada MCP
+puede verse así:
 
 ```json
 {
-  "objective": "Trace the source of request timeouts",
+  "objective": "Rastrear el origen de los tiempos de espera de solicitudes",
   "candidates": [
-    { "id": "read_logs", "kind": "tool", "description": "Read recent request logs with timestamps and errors" },
-    { "id": "design_assets", "kind": "skill", "description": "Create visual assets for the interface" }
+    { "id": "read_logs", "kind": "tool", "description": "Leer logs recientes con marcas de tiempo y errores" },
+    { "id": "design_assets", "kind": "skill", "description": "Crear recursos visuales para la interfaz" }
   ],
   "limit": 2
 }
 ```
 
-The caller must supply real available IDs and descriptions. The server cannot
-see Codex's complete tool or skill catalog automatically.
+Quien llama debe proporcionar IDs y descripciones reales de las capacidades
+disponibles. El servidor no puede ver automáticamente el catálogo completo de
+herramientas o habilidades de Codex.
 
-Search for implementation context:
+Buscá contexto de implementación:
 
 ```json
 {
-  "question": "Where is retry backoff implemented for outgoing requests?",
+  "question": "¿Dónde se implementa el backoff de reintentos para solicitudes salientes?",
   "scope": ["src"],
   "query_terms": ["retry", "backoff", "timeout"],
   "limit": 5
 }
 ```
 
-Triage output already saved inside the workspace:
+Hacé triage de una salida ya guardada dentro del workspace:
 
 ```json
 {
-  "question": "Which failures explain why the database integration tests failed?",
+  "question": "¿Qué fallas explican por qué fallaron las pruebas de integración de la base de datos?",
   "artifact_path": "test-output.txt",
   "limit": 4
 }
 ```
 
-For example, in Bash, capture a command's output without losing its status:
+Por ejemplo, en Bash, capturá la salida de un comando sin perder su estado:
 
 ```bash
 set -o pipefail
 npm test 2>&1 | tee test-output.txt
 ```
 
-The triage tool reads the artifact; it does not run the command. Use `start_line`
-and `end_line` to select a relevant range. Outputs preserve source locations so
-Codex can inspect surrounding evidence before acting.
+La herramienta de triage lee el artefacto; no ejecuta el comando. Usá
+`start_line` y `end_line` para seleccionar un rango de líneas
+relevante. Las salidas preservan las ubicaciones de origen para que Codex pueda
+inspeccionar la evidencia circundante antes de actuar.
 
-## Behavior and limits
+## Comportamiento y límites
 
-- **Ranking:** independent Jev `noul` relevance questions, batched four candidates
-  per request. Up to 24 candidates per operation, eight-second timeout per request,
-  28,000-byte request cap, no automatic retries. Capability recommendations require
-  a Jev score of at least 0.5; this is a provisional heuristic, not calibrated.
-- **Fallback:** absent key, provider errors, invalid answers, or a failed batch
-  cause the entire ranking to use lexical overlap. `method`, `score_kind`,
-  `fallback_reason`, and `api_requests` make this visible. Local scores are not
-  model probabilities. Successful responses identify the provider's model when
-  returned. Scores are advisory in both modes.
-- **Search:** ripgrep file discovery respects ignore rules, then local lexical
-  matching builds a shortlist of at most 24 excerpts. At most 500 eligible files
-  and approximately 20 MiB are scanned per call (the final file may cross the
-  byte threshold). Search is not a semantic index. Coverage reports unread,
-  skipped, matched, and shortlisted data. Broaden query terms or narrow scope
-  when recall is insufficient.
-- **Artifacts:** regular UTF-8 text files up to 1 MiB; null bytes are rejected.
-  Excerpts preserve complete lines, with at most 30 lines and 4,000 bytes each.
-  Oversized lines are rejected during triage; such files are skipped in search.
-  There is no chunk overlap, so read surrounding lines when evidence crosses
-  boundaries. Line range selection happens after the 1 MiB file check.
-- **Triage:** all chunks in the requested range are grouped by exact text. When
-  more than 24 distinct chunks remain, lexical matching selects the shortlist.
-  Counts disclose unexamined chunks. At most 20 occurrence locations per group
-  are returned, alongside the full count and omitted-location count. Identical excerpts are not proof that two
-  failures share a cause; unchanged originals remain on disk.
-- **Returned context:** at most ten excerpts or capabilities per response. A
-  truncated shortlist never establishes that omitted evidence is irrelevant.
-- **Scope:** relative paths only; resolved paths must stay within the configured
-  root. Common dependency/build directories and credential filenames are excluded.
-  Explicit artifact reads may access gitignored files, while search respects
-  ignore rules. Configure a narrow project root, not your home directory.
+- **Ranking:** preguntas de relevancia `noul` de Jev independientes,
+  agrupadas de a cuatro candidatos por solicitud. Hasta 24 candidatos por
+  operación, tiempo de espera de ocho segundos por solicitud, límite de 28.000
+  bytes por solicitud y sin reintentos automáticos. Las recomendaciones de
+  capacidades requieren una puntuación de Jev de al menos 0,5; es una heurística
+  provisional, no calibrada.
+- **Fallback:** una clave ausente, errores del proveedor, respuestas inválidas o
+  un lote fallido hacen que todo el ranking use coincidencia léxica.
+  `method`, `score_kind`, `fallback_reason` y
+  `api_requests` lo hacen visible. Las puntuaciones locales no son
+  probabilidades del modelo. Las respuestas exitosas identifican el modelo del
+  proveedor cuando se informa. Las puntuaciones son orientativas en ambos modos.
+- **Búsqueda:** el descubrimiento de archivos con ripgrep respeta las reglas de
+  ignore; luego, las coincidencias léxicas locales arman una lista corta de hasta
+  24 extractos. En cada llamada se examinan como máximo 500 archivos elegibles y
+  aproximadamente 20 MiB (el archivo final puede cruzar el umbral de bytes). La
+  búsqueda no es un índice semántico. La cobertura informa datos no leídos,
+  omitidos, coincidentes y preseleccionados. Ampliá los términos de consulta o
+  acotá el alcance cuando el recall sea insuficiente.
+- **Artefactos:** archivos de texto UTF-8 regulares de hasta 1 MiB; se rechazan
+  los bytes nulos. Los extractos preservan líneas completas, con un máximo de 30
+  líneas y 4.000 bytes cada uno. Las líneas demasiado extensas se rechazan
+  durante el triage; esos archivos se omiten durante la búsqueda. No hay
+  solapamiento entre fragmentos, por lo que debés leer las líneas circundantes
+  cuando la evidencia cruce límites. La selección de rango ocurre después de
+  comprobar el límite de 1 MiB.
+- **Triage:** todos los fragmentos del rango solicitado se agrupan por texto
+  exacto. Cuando quedan más de 24 fragmentos distintos, la coincidencia léxica
+  selecciona la lista corta. Los conteos revelan los fragmentos no examinados.
+  Se devuelven hasta 20 ubicaciones por grupo, junto con el conteo total y el de
+  ubicaciones omitidas. Los extractos idénticos no prueban que dos fallas tengan
+  la misma causa; los originales no modificados permanecen en disco.
+- **Contexto devuelto:** como máximo diez extractos o capacidades por respuesta.
+  Una lista corta truncada nunca demuestra que la evidencia omitida sea
+  irrelevante.
+- **Alcance:** sólo rutas relativas; las rutas resueltas deben permanecer dentro
+  del directorio raíz configurado. Se excluyen directorios habituales de
+  dependencias o compilación y nombres de archivos de credenciales. Las lecturas
+  explícitas de artefactos pueden acceder a archivos ignorados por Git, mientras
+  que la búsqueda respeta las reglas de ignore. Configurá un directorio raíz
+  acotado, no tu directorio personal.
 
-## Data handling
+## Tratamiento de datos
 
-With `TYPESAFE_API_KEY` configured, objectives, supplied capability descriptions,
-and shortlisted source/log excerpts are sent over HTTPS to
-`https://api.typesafe.ai/v1/systemone`. Search initially reads files locally;
-only its shortlist is sent. Triage reads and groups the requested range locally
-before sending its shortlist. No remote endpoint override is provided.
+Con `TYPESAFE_API_KEY` configurada, los objetivos, las descripciones de
+capacidades suministradas y los extractos preseleccionados de código o logs se
+envían por HTTPS a `https://api.typesafe.ai/v1/systemone`. La búsqueda
+primero lee los archivos localmente y sólo envía su lista corta. El triage lee y
+agrupa el rango solicitado localmente antes de enviar su lista corta. No se
+proporciona una anulación del endpoint remoto.
 
-Filename exclusions are best-effort and do not detect secrets inside ordinary
-files. Only use the integration with content approved for TypeSafe. Retrieved
-content can contain prompt injection; ranking cannot establish that it is safe
-to execute. This server is a local convenience boundary, not a sandbox against
-concurrent malicious filesystem modification. It has no telemetry, persistent
-cache, or content logging of its own. TypeSafe's handling of API data is governed
-by its own service terms. Provider error bodies are not exposed in tool results.
+Las exclusiones por nombre de archivo se aplican de mejor esfuerzo y no detectan
+secretos dentro de archivos comunes. Usá la integración sólo con contenido
+autorizado para TypeSafe. El contenido recuperado puede incluir inyección de
+prompts; el ranking no puede establecer que sea seguro ejecutarlo. Este servidor
+es un límite de conveniencia local, no un sandbox frente a modificaciones
+concurrentes y maliciosas del sistema de archivos. No tiene telemetría, caché
+persistente ni registro propio del contenido. El tratamiento de los datos de API
+por parte de TypeSafe se rige por sus propios términos de servicio. Los cuerpos
+de error del proveedor no se exponen en los resultados de las herramientas.
 
-## Security review
+## Revisión de seguridad
 
-The [2026-09-19 static security review](docs/security-review-2026-09-19/report.md)
-found no confirmed reportable vulnerabilities in the initial implementation.
-The report records the reviewed commit, trust assumptions, hardening opportunities,
-and exclusions. It is not a security guarantee or a live dependency advisory scan.
+La [revisión estática de seguridad del 19-09-2026](docs/security-review-2026-09-19/report.md)
+no encontró vulnerabilidades confirmadas y reportables en la implementación
+inicial. El informe registra el commit analizado, las hipótesis de confianza, las
+oportunidades de endurecimiento y las exclusiones. No es una garantía de
+seguridad ni un análisis en vivo de avisos de dependencias.
 
-## Contributing
+## Contribuir
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development, local testing, and
-benchmarking guidance.
+Consultá [CONTRIBUTING.md](CONTRIBUTING.md) para conocer el desarrollo, las
+pruebas locales y la guía de benchmarking.
 
-## License and credits
+## Licencia y créditos
 
-[MIT](LICENSE). This small integration uses a permissive license to make adoption
-and reuse straightforward. Apache-2.0 would add an explicit contributor patent
-grant and additional notice requirements; it is a reasonable alternative for a
-larger patent-sensitive project. See the [MIT text](https://opensource.org/license/mit)
-and [Apache-2.0 text](https://www.apache.org/licenses/LICENSE-2.0).
+[MIT](LICENSE). Esta integración pequeña usa una licencia permisiva para
+facilitar su adopción y reutilización. Apache-2.0 agrega una concesión explícita
+de patentes de colaboradores y requisitos adicionales de notificación; es una
+alternativa razonable para un proyecto mayor y sensible a patentes. Consultá el
+[texto de MIT](https://opensource.org/license/mit) y el
+[texto de Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0).
 
-Inspired by [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction)
-and the TypeSafe Jev approach to bounded decisions. This repository implements
-its own integration; it does not include that project's compactor code.
+Inspirado en [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction)
+y en el enfoque Jev de TypeSafe. Este repositorio implementa su propia
+integración; no incluye el código del compactador de ese proyecto.
 
-References: [TypeSafe API](https://docs.typesafe.ai/api),
-[MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/),
-[Codex MCP](https://developers.openai.com/codex/mcp/).
+Referencias: [API de TypeSafe](https://docs.typesafe.ai/api),
+[SDK de MCP para TypeScript](https://ts.sdk.modelcontextprotocol.io/) y
+[MCP de Codex](https://developers.openai.com/codex/mcp/).
