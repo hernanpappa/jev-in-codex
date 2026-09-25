@@ -1,8 +1,13 @@
 import { Jev, lexicalScore } from './jev.js';
 import { excerpts, Workspace, type Excerpt, InputError } from './workspace.js';
+import { createCheckpoint, type CheckpointCoverage, type CheckpointMessage } from './checkpoint.js';
 
 export class Service {
-  constructor(private readonly workspace: Workspace, private readonly jev: Jev) {}
+  constructor(private readonly workspace: Workspace, private readonly jev: Jev, private readonly allowCheckpointRemote = false) {}
+
+  checkpoint(objective: string, messages: CheckpointMessage[], limit: number, coverage?: CheckpointCoverage) {
+    return createCheckpoint({ objective, messages, limit, jev: this.jev, allowRemote: this.allowCheckpointRemote, coverage });
+  }
 
   async select(objective: string, candidates: { id: string; kind: 'tool' | 'skill'; description: string }[], limit: number) {
     if (new Set(candidates.map(item => item.id)).size !== candidates.length) throw new InputError('Capability IDs must be unique.');

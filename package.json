@@ -1,7 +1,7 @@
 {
   "name": "jev-in-codex",
   "version": "0.1.0",
-  "description": "Jev-powered capability selection, context search, and output triage for Codex via MCP",
+  "description": "Jev-powered capability selection, context search, output triage, and conversation checkpoints for Codex via MCP",
   "type": "module",
   "private": true,
   "license": "MIT",

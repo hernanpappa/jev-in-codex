@@ -102,9 +102,9 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
   const catalog = Array.from({ length: 6 }, (_, i) => ({ id: `tool-${i}`, kind: 'tool', description: 'Inspect database state' }));
   await client.connect(transport);
 
-  await t.test('handshake exposes all three tools', async () => {
+  await t.test('handshake exposes all four tools', async () => {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map(tool => tool.name).sort(), ['jev_search', 'jev_select_capability', 'jev_triage']);
+    assert.deepEqual(tools.map(tool => tool.name).sort(), ['jev_create_checkpoint', 'jev_search', 'jev_select_capability', 'jev_triage']);
     assert.equal(requests.length, 0);
   });
 
@@ -152,6 +152,15 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     assert.equal(result.coverage.total_lines, 60);
     assert.equal(result.coverage.chunks_evaluated, 2);
     assert.equal(result.omitted_results, 1);
+  });
+
+  await t.test('checkpoint stays local despite an API key unless its separate opt-in is set', async () => {
+    const before = requests.length;
+    const local = await call('jev_create_checkpoint', { objective: 'preserve database decision',
+      messages: [{ id: 'turn-db', role: 'user', text: 'Keep the database rollback decision.' }] });
+    assert.equal(local.method, 'local_fallback');
+    assert.equal(local.api_requests, 0);
+    assert.equal(requests.length, before);
   });
 
   await t.test('provider can reject every capability', async () => {

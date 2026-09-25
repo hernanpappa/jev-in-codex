@@ -1,23 +1,24 @@
 {
   "name": "jev-in-codex",
   "version": "0.1.0",
-  "description": "Jev-powered capability selection, context search, and output triage for Codex.",
+  "description": "Jev-powered capability selection, context search, output triage, and local context checkpoints for Codex.",
   "author": {
     "name": "Vectordrift",
     "url": "https://github.com/teempai"
   },
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Jev in Codex",
     "shortDescription": "Rank capabilities and evidence with Jev.",
-    "longDescription": "Use a local MCP server to rank tools and skills, rerank code excerpts, and triage saved output with Jev.",
+    "longDescription": "Use a local MCP server to rank tools and skills, search code, triage saved output, and preserve bounded conversation excerpts around native compaction.",
     "developerName": "Vectordrift",
     "category": "Productivity",
     "capabilities": [
       "Read"
     ],
     "defaultPrompt": [
-      "Use Jev to find relevant evidence for this task."
+      "Use Jev to find relevant evidence for this task and preserve context when useful."
     ]
   },
   "mcpServers": "./.mcp.json",

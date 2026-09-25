@@ -26,7 +26,7 @@ npm run check
 MCP SDK client
   → real stdio transport and protocol handshake
   → compiled dist/index.js in a separate Node process
-  → real tool schema validation and service logic
+  → real four-tool schema validation and service logic
   → real workspace reads and ripgrep discovery
   → real Jev request construction and HTTP fetch
   → local HTTP server returning simulated TypeSafe responses
@@ -50,10 +50,11 @@ passing through local fallback.
 
 | Scenario | Checked outcome |
 | --- | --- |
-| MCP handshake | All three tools are advertised |
+| MCP handshake | All four tools are advertised |
 | Six capability candidates | Two HTTP batches; the last candidate wins on its provider score |
 | Context search | Real local files are retrieved; provider ranking changes their order; paths and original lines survive |
 | Output triage | A later log passage outranks the first; original text, line numbers, and coverage survive |
+| Manual checkpoint | Bounded original passages and source offsets survive; configured API key does not cause transcript egress by default |
 | No suitable capability | Low provider scores produce a null recommendation |
 | HTTP 429 after a successful batch | The entire ranking falls back; provider scores are not mixed with lexical scores |
 | Invalid JSON, invalid score, missing answer | Explicit local fallback returns through MCP |
@@ -67,8 +68,15 @@ For example, the capability test expects `method: "jev"`, model
 
 ## What this does not prove
 
-This validates the application's MCP-to-HTTP integration and its handling of the
+The hook unit tests exercise fixture JSONL transcripts, bounded tail reads,
+private `PLUGIN_DATA` storage, session isolation, expiration, one-time restore,
+and the fail-open behavior without launching Codex or using a real transcript.
+They verify the packaged event matchers but do not prove that a particular Codex
+installation has reviewed/trusted the plugin hooks.
+
+The MCP end-to-end test validates the application and its handling of the
 modeled TypeSafe contract. It does not test TypeSafe's live authentication,
 service behavior, TLS connection, or ranking quality. It also does not launch
-Codex itself, verify plugin UI installation, or establish that an LLM will choose
-to call Jev at the right time. Those require separate live integration checks.
+Codex itself, verify plugin installation or hook trust, or establish that an LLM
+will choose to call Jev at the right time. Those require separate live
+integration checks.

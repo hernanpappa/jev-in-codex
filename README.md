@@ -1,7 +1,7 @@
 # jev-in-codex
 
 Usá [Jev](https://docs.typesafe.ai/) para ordenar capacidades y evidencia dentro
-de un flujo de trabajo existente de Codex. Un servidor MCP local expone tres
+de un flujo de trabajo existente de Codex. Un servidor MCP local expone cuatro
 herramientas y una habilidad complementaria explica cuándo usarlas.
 
 **Estado: MVP experimental.** Incluye pruebas funcionales de protocolo y de
@@ -16,12 +16,16 @@ oficial de OpenAI ni de TypeSafe.
 | `jev_select_capability` | Objetivo y un catálogo provisto de herramientas o habilidades | Candidatos ordenados, con opción de no recomendar ninguno |
 | `jev_search` | Pregunta, alcance del workspace y términos de consulta opcionales | Extractos de código o documentación reordenados, con rutas y números de línea |
 | `jev_triage` | Pregunta y un artefacto de salida guardado | Extractos originales relevantes, grupos de duplicados exactos y cobertura |
+| `jev_create_checkpoint` | Objetivo y mensajes de conversación provistos explícitamente | Pasajes originales acotados, referencias, puntuaciones y cobertura; no compacta el historial activo |
 
 Codex aporta el objetivo y toma la decisión final. El servidor recupera
 candidatos acotados localmente, le hace preguntas de relevancia a Jev y devuelve
 evidencia original. No ejecuta las capacidades seleccionadas ni intercepta
-llamadas arbitrarias a herramientas de Codex. Tampoco reemplaza la compactación
-de Codex ni expone su catálogo interno de contexto o herramientas.
+llamadas arbitrarias a herramientas de Codex. El plugin local puede guardar un
+checkpoint extractivo antes de la compactación nativa y devolverlo en la
+continuación; Codex conserva el control de cuándo compactar. Jev no observa el
+porcentaje exacto de contexto ni impone un umbral por cantidad de mensajes, y
+tampoco expone su catálogo interno de contexto o herramientas.
 
 ```text
 Codex → herramienta MCP → candidatos locales → evaluación de relevancia de Jev
@@ -49,19 +53,22 @@ usar la integración:
 ```text
 Instalá la rama jev-coding-codex-tools de
 https://github.com/hernanpappa/jev-in-codex para el proyecto actual siguiendo
-docs/INSTALL.md. Configurá las dependencias, la conexión MCP local y la habilidad
-incluida. Integrá la guía de docs/AGENTS.jev.md en las instrucciones persistentes
-de mi proyecto, preservando las instrucciones y la configuración existentes, para
-que sepas cuándo y cómo usar Jev para selección de herramientas y habilidades,
-búsqueda de contexto y triage de resultados. Configurá la autenticación de
-TypeSafe de forma privada y verificá las tres herramientas; informá si está activo
-Jev o el fallback local. Completá la instalación e indicame si necesitás que
-ingrese la clave privada o que reinicie Codex.
+docs/INSTALL.md. Configurá dependencias, plugin local de Codex con sus hooks,
+conexión MCP y habilidad incluida. Integrá docs/AGENTS.jev.md en las instrucciones
+persistentes del proyecto, preservando las existentes. Verificá las cuatro tools
+y los hooks; pedime que revise y confíe los hooks mediante el flujo normal de
+Codex, sin omitir su revisión. Configurá TypeSafe de forma privada, pero mantené
+local el procesamiento de checkpoints aunque la clave API esté configurada.
+No habilites JEV_ALLOW_CHECKPOINT_EGRESS salvo que autorice explícitamente enviar
+extractos de conversación a TypeSafe. Informá si Jev o el fallback local está
+activo y si necesitás que ingrese la clave, confíe los hooks o reinicie Codex.
 ```
 
 Jev usa una clave de API de TypeSafe y envía a TypeSafe los extractos
-seleccionados de código o logs. Codex se ocupa de la instalación; quizás tengas
-que ingresar la clave de forma privada o reiniciar Codex.
+seleccionados de código o logs. Los extractos de conversación para checkpoints
+se mantienen locales, salvo autorización separada. Codex se ocupa de la
+instalación; quizás tengas que ingresar la clave de forma privada, confiar los
+hooks o reiniciar Codex.
 
 <details>
 <summary>Instalación y configuración manual</summary>
@@ -88,7 +95,7 @@ Agregá una entrada al `config.toml` de Codex y sustituí ambas rutas absolutas:
 [mcp_servers.jev]
 command = "node"
 args = ["/absolute/path/to/jev-in-codex/dist/index.js", "--root", "/absolute/path/to/your-project"]
-env_vars = ["TYPESAFE_API_KEY", "JEV_MODEL"]
+env_vars = ["TYPESAFE_API_KEY", "JEV_MODEL", "JEV_ALLOW_CHECKPOINT_EGRESS"]
 tool_timeout_sec = 90
 ```
 
@@ -97,6 +104,12 @@ en TypeSafe; no la incluyas en el control de versiones ni en un prompt. De forma
 opcional, configurá `JEV_MODEL` con el nombre de un modelo fijado; el
 valor predeterminado es `jev-latest`.
 
+Los checkpoints usan ranking local incluso si existe la clave. Sólo si querés
+enviar extractos conversacionales a TypeSafe, habilitá por separado
+`JEV_ALLOW_CHECKPOINT_EGRESS=true` en el entorno del proceso que ejecuta el MCP
+y en el entorno de Codex que ejecuta los hooks. La variable debe permanecer
+ausente si no aprobaste esa divulgación.
+
 El directorio raíz es obligatorio, para que el servidor no pueda analizar
 silenciosamente un directorio de trabajo no deseado. Cambiá `--root` para
 otro proyecto, u omitilo, configurá `JEV_WORKSPACE_ROOT` e incluí ese
@@ -104,7 +117,7 @@ nombre en `env_vars`. Un `--root` explícito tiene precedencia.
 Usá una ruta absoluta al ejecutable de Node si el entorno que inicia Codex no
 puede encontrar `node`.
 
-Sin una clave de TypeSafe, las tres herramientas funcionan en **modo de fallback
+Sin una clave de TypeSafe, las cuatro herramientas funcionan en **modo de fallback
 local**. Esto permite comprobar la instalación, pero no demuestra la calidad del
 ranking de Jev. El acceso y la facturación habituales de Codex no cambian. Las
 solicitudes de Jev usan una cuenta de API de TypeSafe independiente; esta
@@ -128,24 +141,16 @@ Revisá un directorio de habilidades existente antes de reemplazarlo. La habilid
 usa Jev sólo cuando seleccionar o filtrar resulta útil; las búsquedas exactas
 simples siguen usando `rg`.
 
-### Empaquetado opcional como plugin
+### Plugin local de Codex
 
-El repositorio incluye `.codex-plugin/plugin.json` y `.mcp.json`
-compatibles con el formato heredado; ambos agrupan la misma habilidad y el mismo
-servidor MCP. Para desarrollar el plugin localmente, ejecutá `npm link`
-después de compilar, de modo que `jev-in-codex` quede disponible en
-`PATH`. Configurá `JEV_WORKSPACE_ROOT` con el proyecto de
-código y exportá `TYPESAFE_API_KEY` en el entorno que inicia Codex. El
-manifiesto reenvía esas variables al servidor.
-
-Después podés agregar el clon a tu propio marketplace de plugins de Codex con el
-[flujo de creación de plugins](https://developers.openai.com/plugins/build/plugins).
-La configuración MCP directa anterior es el transporte probado. La instalación
-desde la UI del plugin todavía no se verificó de extremo a extremo, y una
-instalación del plugin no instala Node, dependencias ni ripgrep. Elegí un único
-camino de instalación para no duplicar herramientas ni habilidades. Este
-repositorio no aparece en el directorio público de plugins y no modifica
-automáticamente tu configuración de Codex.
+El manifiesto `.codex-plugin/plugin.json` agrupa la habilidad, la conexión MCP y
+los hooks `PreCompact` y `SessionStart(source=compact)`. Seguí
+[`docs/INSTALL.md`](docs/INSTALL.md) para el marketplace local, la instalación y
+la revisión de confianza de los hooks. Codex no los ejecuta hasta que el usuario
+revise y confíe las definiciones actuales. No combines esta ruta con otra
+conexión MCP o una segunda copia de la habilidad. Si usás sólo la configuración
+MCP directa, la herramienta manual de checkpoint está disponible, pero los hooks
+automáticos del plugin no se instalan.
 
 </details>
 
@@ -190,6 +195,23 @@ Hacé triage de una salida ya guardada dentro del workspace:
   "limit": 4
 }
 ```
+
+Creá un checkpoint manual con mensajes sintéticos o el contexto que el usuario
+quiera preservar:
+
+```json
+{
+  "objective": "Preservar la decisión y las restricciones para continuar el cambio",
+  "messages": [
+    { "id": "turn-12", "role": "user", "text": "Mantener la migración reversible y no cambiar el contrato API." },
+    { "id": "turn-13", "role": "assistant", "text": "La migración se desplegará en dos fases." }
+  ],
+  "limit": 8
+}
+```
+
+El resultado contiene pasajes originales con rol, referencia, offsets y
+puntuación. No redacta un resumen ni modifica la conversación activa.
 
 Por ejemplo, en Bash, capturá la salida de un comando sin perder su estado:
 
@@ -240,6 +262,13 @@ inspeccionar la evidencia circundante antes de actuar.
 - **Contexto devuelto:** como máximo diez extractos o capacidades por respuesta.
   Una lista corta truncada nunca demuestra que la evidencia omitida sea
   irrelevante.
+- **Checkpoints:** hasta 200 mensajes y 120.000 caracteres provistos; el hook lee
+  como máximo el último MiB del transcript. Los mensajes se segmentan en pasajes
+  de hasta 1.000 caracteres, se evalúan hasta 24 localmente y se devuelven hasta
+  ocho (máximo 8.000 caracteres). La evaluación remota, si se autoriza por
+  separado, usa como máximo cuatro candidatos por evento. Los checkpoints se
+  guardan fuera del repo en `PLUGIN_DATA`, vencen a las 24 horas y se eliminan
+  después de restaurarlos.
 - **Alcance:** sólo rutas relativas; las rutas resueltas deben permanecer dentro
   del directorio raíz configurado. Se excluyen directorios habituales de
   dependencias o compilación y nombres de archivos de credenciales. Las lecturas
@@ -255,6 +284,12 @@ envían por HTTPS a `https://api.typesafe.ai/v1/systemone`. La búsqueda
 primero lee los archivos localmente y sólo envía su lista corta. El triage lee y
 agrupa el rango solicitado localmente antes de enviar su lista corta. No se
 proporciona una anulación del endpoint remoto.
+
+Los transcripts de Codex se leen localmente sólo desde el hook `PreCompact`; el
+hook conserva exclusivamente los pasajes seleccionados en el directorio privado
+del plugin y los entrega como contexto no confiable tras la compactación nativa.
+La clave TypeSafe no autoriza ese envío: el ranking del checkpoint sigue local,
+salvo que el usuario habilite de forma explícita `JEV_ALLOW_CHECKPOINT_EGRESS`.
 
 Las exclusiones por nombre de archivo se aplican de mejor esfuerzo y no detectan
 secretos dentro de archivos comunes. Usá la integración sólo con contenido

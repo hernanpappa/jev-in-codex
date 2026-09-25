@@ -32,13 +32,17 @@ const responseSchema = z.object({
 export class Jev {
   constructor(private readonly options: JevOptions = {}) {}
 
+  rankLocal(question: string, candidates: Candidate[], reason = 'Local ranking was explicitly selected.'): Ranking {
+    return {
+      method: 'local_fallback', score_kind: 'lexical_overlap', fallback_reason: reason,
+      api_requests: 0,
+      ranked: candidates.map(item => ({ ...item, score: lexicalScore(question, item.text) })).sort((a, b) => b.score - a.score),
+    };
+  }
+
   async rank(question: string, candidates: Candidate[]): Promise<Ranking> {
     let requests = 0;
-    const local = (reason: string): Ranking => ({
-      method: 'local_fallback', score_kind: 'lexical_overlap', fallback_reason: reason,
-      api_requests: requests,
-      ranked: candidates.map(item => ({ ...item, score: lexicalScore(question, item.text) })).sort((a, b) => b.score - a.score),
-    });
+    const local = (reason: string): Ranking => ({ ...this.rankLocal(question, candidates, reason), api_requests: requests });
     if (!this.options.apiKey) return local('TYPESAFE_API_KEY is not configured.');
     if (candidates.length === 0) return { method: 'jev', score_kind: 'noul', api_requests: 0, ranked: [] };
     const ranked: Ranked[] = [];

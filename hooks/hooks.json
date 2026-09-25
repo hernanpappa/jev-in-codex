@@ -1,0 +1,32 @@
+{
+  "description": "Local Jev checkpoints around Codex native compaction.",
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "^(manual|auto)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/dist/hooks.js\"",
+            "timeout": 5,
+            "statusMessage": "Preparing a local Jev checkpoint"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "^compact$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/dist/hooks.js\"",
+            "timeout": 3,
+            "additionalContextLimit": 4000,
+            "statusMessage": "Restoring the Jev checkpoint"
+          }
+        ]
+      }
+    ]
+  }
+}

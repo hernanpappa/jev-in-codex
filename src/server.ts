@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { Service } from './service.js';
 import { InputError } from './workspace.js';
+import { checkpointMessagesSchema, MAX_CHECKPOINT_RESULTS } from './checkpoint.js';
 
 export function createServer(service: Service): McpServer {
   const server = new McpServer({ name: 'jev-in-codex', version: '0.1.0' });
@@ -32,5 +33,11 @@ export function createServer(service: Service): McpServer {
     inputSchema: z.object({ question, artifact_path: relativePath, start_line: z.number().int().min(1).default(1),
       end_line: z.number().int().min(1).optional(), limit }),
   }, input => run(() => service.triage(input.question, input.artifact_path, input.start_line, input.end_line, input.limit)));
+  server.registerTool('jev_create_checkpoint', {
+    description: 'Select bounded original passages from explicitly supplied conversation messages. Checkpoint ranking stays local unless JEV_ALLOW_CHECKPOINT_EGRESS=true. Does not modify or compact the active conversation.',
+    annotations,
+    inputSchema: z.object({ objective: question, messages: checkpointMessagesSchema,
+      limit: z.number().int().min(1).max(MAX_CHECKPOINT_RESULTS).default(MAX_CHECKPOINT_RESULTS) }),
+  }, input => run(() => service.checkpoint(input.objective, input.messages, input.limit)));
   return server;
 }

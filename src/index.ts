@@ -14,7 +14,8 @@ try {
     const root = values.root ?? process.env.JEV_WORKSPACE_ROOT;
     if (!root) throw new Error('Supply --root or JEV_WORKSPACE_ROOT explicitly.');
     const workspace = await Workspace.create(root);
-    const service = new Service(workspace, new Jev({ apiKey: process.env.TYPESAFE_API_KEY, model: process.env.JEV_MODEL }));
+    const service = new Service(workspace, new Jev({ apiKey: process.env.TYPESAFE_API_KEY, model: process.env.JEV_MODEL }),
+      process.env.JEV_ALLOW_CHECKPOINT_EGRESS === 'true');
     await serveStdio(() => createServer(service));
   }
 } catch {

@@ -3,14 +3,19 @@
 Open Codex in the coding project you want Jev to read, and paste this:
 
 ```text
-Install https://github.com/teempai/jev-in-codex for the current project using
-its docs/INSTALL.md. Set up dependencies, the local Codex plugin, MCP connection,
-and bundled skill. Add its docs/AGENTS.jev.md guidance to my project's persistent
-Codex instructions so you know when and how to use Jev for tool/skill selection,
-context search, and output triage. Preserve existing instructions and configuration.
-Configure TypeSafe authentication privately and verify all three tools, reporting
-whether Jev or local fallback is active. Complete the setup and tell me if you
-need a private API-key entry or a Codex restart.
+Install branch jev-coding-codex-tools from
+https://github.com/hernanpappa/jev-in-codex for the current project, following
+its docs/INSTALL.md. Set up dependencies, the local Codex plugin (including its
+bundled lifecycle hooks), MCP connection, and bundled skill. Add
+docs/AGENTS.jev.md guidance to my project's persistent Codex instructions,
+preserving existing instructions and configuration. Verify all four MCP tools
+and the hook configuration; ask me to review/trust the hooks through Codex's
+normal flow, never bypass hook trust. Configure TypeSafe authentication
+privately; keep checkpoint transcript/excerpt evaluation local by default even
+if the API key is configured. Do not enable JEV_ALLOW_CHECKPOINT_EGRESS unless
+I explicitly authorize sending conversation excerpts to TypeSafe. Report
+whether Jev or local fallback is active, and tell me if you need a private
+API-key entry, hook trust, or a Codex restart.
 ```
 
 The agent handles the setup; you supply the TypeSafe key privately when ready.
@@ -26,36 +31,49 @@ there is currently no marketplace catalog in this repository.
 1. Inspect the checkout and prerequisites. Use a durable, user-writable local
    installation folder outside the coding project. Do not replace another
    installation or change the user's Node installation without checking it.
-   Use `npm ci --ignore-scripts`, `npm run check`, and `node dist/index.js --help`.
+   Clone the requested branch, then use `npm ci --ignore-scripts`, `npm run check`,
+   `npm run build`, and `node dist/index.js --help`.
 2. Put the checkout at `plugins/jev-in-codex` beneath a dedicated local
    marketplace root. Create `.agents/plugins/marketplace.json` beneath that
    root with a unique marketplace name and the entry below. If using an existing
    marketplace, preserve its entries and use the host's plugin-authoring helpers
    when available.
-3. In this **local checkout's** `.mcp.json`, replace the `jev` server command
-   with the resolved absolute Node executable. Set its arguments to the absolute
+3. In this **local checkout's** `.mcp.json`, add or update the `jev` server
+   entry under `mcpServers` (the source file may contain an empty object). Use
+   the resolved absolute Node executable. Set its arguments to the absolute
    `dist/index.js` path followed by `--root` and the absolute coding-project
-   path. Retain `env_vars: ["TYPESAFE_API_KEY", "JEV_MODEL"]`; set
-   `tool_timeout_sec` to 90. These machine-specific paths belong in the local
+   path. Set `env_vars` to `TYPESAFE_API_KEY`, `JEV_MODEL`, and
+   `JEV_ALLOW_CHECKPOINT_EGRESS`; leave the last variable unset unless the user
+   separately authorizes remote transcript scoring. Set `tool_timeout_sec` to
+   90. These machine-specific paths belong in the local
    installation, not an upstream commit. This avoids requiring `npm link` or
    relying on a desktop application's PATH. Keep the checkout at that location:
    the installed manifest will reference its built server and dependencies.
 4. Check `codex plugin marketplace --help` and `codex plugin add --help` for
    the installed Codex version. Register the local marketplace root, then install
    `jev-in-codex@<marketplace-name>`. Do not also register the same MCP server
-   separately or copy the bundled skill a second time.
+   separately or copy the bundled skill a second time. The plugin bundles
+   `PreCompact` and `SessionStart(source=compact)` hooks; installing it does not
+   automatically trust them. Ask the user to inspect and trust the exact hooks
+   through Codex's `/hooks` flow. Never bypass that review.
 5. Install persistent usage guidance using the section below. Preserve existing
    project instructions, and avoid duplicate Jev sections on repeated installs.
-6. Verify the plugin appears in `codex plugin list`. With a launch environment
-   that does not contain `TYPESAFE_API_KEY`, verify an MCP handshake and the
-   three tools: `jev_select_capability`, `jev_search`, and `jev_triage`.
-   Plugin listing alone does not prove the server starts. If tools become
-   available only in a new session, say so and finish that check there.
+6. Verify the plugin appears in `codex plugin list`. In a new session, verify
+   an MCP handshake and all four tools: `jev_select_capability`, `jev_search`,
+   `jev_triage`, and `jev_create_checkpoint`. Check a checkpoint using synthetic
+   conversation text and confirm it reports local ranking and makes no provider
+   request. Inspect `/hooks` for both lifecycle events and verify that the user
+   has reviewed/trusted them. Plugin listing alone does not prove the server or
+   hooks run. If tools become available only in a new session, say so and finish
+   that check there.
 7. Give the user private instructions for setting the key in the environment
    that launches Codex. Never ask for it in chat, print it, or write its value
    into the repository or marketplace files. A desktop app may need a different
-   environment setup than a terminal. Start a new Codex thread after installation;
-   relaunch the application if its environment changed.
+   environment setup than a terminal. A key enables remote scoring for the
+   existing selection, search, and triage tools, but does not authorize sending
+   conversation checkpoints. Only set `JEV_ALLOW_CHECKPOINT_EGRESS=true` after
+   the user explicitly approves that separate data flow. Start a new Codex
+   thread after installation; relaunch the application if its environment changed.
 
 A minimal catalog for a **new dedicated local marketplace** is:
 
@@ -85,7 +103,8 @@ for host-specific behavior. CLI command syntax was checked against Codex 0.154.0
 installation through the desktop UI has not been verified. If the user's host
 cannot install local plugins, use the README's direct MCP configuration and
 companion skill as a fallback, and describe it accurately as that installation
-method.
+method: the manual `jev_create_checkpoint` tool is available, but MCP alone does
+not install the plugin's automatic lifecycle hooks.
 
 ## Persistent Codex instructions
 
@@ -103,9 +122,12 @@ user requests that scope. On removal, remove only the Jev section added by this
 installation.
 
 The installed guidance tells Codex when to select capabilities, search context,
-and triage output; when normal tools are sufficient; and how to interpret scores,
-fallback, coverage, and untrusted evidence. Do not add a blanket requirement to
-call Jev on every turn or change tool approval policies.
+triage output, or create a manual context checkpoint; when normal tools are
+sufficient; and how to interpret scores, fallback, coverage, and untrusted
+evidence. It also explains that trusted hooks save a bounded local checkpoint
+before native compaction and restore it afterward. Do not claim Jev controls a
+context-percentage/message-count threshold, add a blanket requirement to call
+Jev on every turn, or change tool approval policies.
 
 In a new session, ask Codex to summarize the active Jev guidance as well as
 checking tool availability. If the instructions are not loaded, inspect overrides
@@ -117,8 +139,9 @@ and instruction discovery before claiming setup is complete. See the
 Start a new thread and ask:
 
 > Summarize when your project instructions tell you to use Jev, then confirm
-> its three tools are available. Use jev_select_capability with a
-> small synthetic catalog to check whether ranking is using Jev or local fallback.
+> its four tools are available. Use jev_select_capability with a
+> small synthetic catalog to check whether ranking is using Jev or local fallback,
+> then use jev_create_checkpoint with synthetic history and verify that it stays local.
 
 A key-free check should report `method: local_fallback`. After configuring a
 working key, the synthetic check should report `method: jev`; failures may still
