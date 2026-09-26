@@ -7,6 +7,7 @@ import { CHECKPOINT_TTL_MS, createCheckpoint, MAX_CHECKPOINT_TRANSCRIPT_BYTES } 
 import { loadCheckpoint, newStoredCheckpoint, saveCheckpoint } from '../src/checkpoint-store.js';
 import { handleHookEvent } from '../src/hooks.js';
 import { Jev } from '../src/jev.js';
+import { resolveJevProvider } from '../src/provider.js';
 import { parseTranscriptBuffer, readTranscriptTail } from '../src/transcript.js';
 
 function record(type: string, payload: unknown) { return JSON.stringify({ type, payload }); }
@@ -139,6 +140,50 @@ test('a key alone never sends transcript text; only the separate opt-in permits 
   assert.ok(remote.output);
   assert.match(remote.output!, /jev-test/);
   await remote.afterOutput?.();
+});
+
+test('invalid provider keeps hooks local even with opt-in and an injected client', async t => {
+  const fx = await fixture(t);
+  let requests = 0;
+  const jev = new Jev({ apiKey: 'synthetic-key', fetch: async () => {
+    requests++;
+    throw new Error('Must not fetch');
+  } });
+  const env = { ...fx.env, JEV_PROVIDER: 'invalid', JEV_ALLOW_CHECKPOINT_EGRESS: 'true' };
+  await handleHookEvent({ hook_event_name: 'PreCompact', trigger: 'manual', session_id: 'invalid-route',
+    cwd: fx.project, transcript_path: fx.transcript }, env, Date.now(), { jev });
+  assert.equal(requests, 0);
+  const restored = await handleHookEvent({ hook_event_name: 'SessionStart', source: 'compact',
+    session_id: 'invalid-route', cwd: fx.project }, env);
+  assert.match(restored.output ?? '', /local_fallback/);
+});
+
+test('Vercel hook transcript egress requires opt-in and never switches to TypeSafe', async t => {
+  const fx = await fixture(t);
+  let calls = 0;
+  const env = { ...fx.env, JEV_PROVIDER: 'vercel', AI_GATEWAY_API_KEY: 'gateway-key',
+    TYPESAFE_API_KEY: 'direct-key' };
+  const jev = new Jev({ ...resolveJevProvider(env), fetch: async (url, init) => {
+    calls++;
+    assert.equal(url, 'https://ai-gateway.vercel.sh/typesafe/v1/systemone');
+    assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer gateway-key');
+    const body = JSON.parse(init!.body as string);
+    assert.ok(body.state.candidates.every((candidate: { text: string }) => candidate.text.length <= 1000));
+    return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map(id =>
+      [id, { type: 'noul', noul: 0.9 }])) });
+  } });
+  const event = { hook_event_name: 'PreCompact', trigger: 'manual', session_id: 'vercel-local',
+    cwd: fx.project, transcript_path: fx.transcript };
+  await handleHookEvent(event, env, Date.now(), { jev });
+  assert.equal(calls, 0);
+  const local = await handleHookEvent({ hook_event_name: 'SessionStart', source: 'compact',
+    session_id: 'vercel-local', cwd: fx.project }, env);
+  assert.match(local.output ?? '', /local_fallback/);
+  await local.afterOutput?.();
+
+  await handleHookEvent({ ...event, session_id: 'vercel-remote' },
+    { ...env, JEV_ALLOW_CHECKPOINT_EGRESS: 'true' }, Date.now(), { jev });
+  assert.equal(calls, 1);
 });
 
 test('stored checkpoints expire after the configured TTL', async t => {

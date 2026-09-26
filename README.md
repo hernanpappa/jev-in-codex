@@ -57,18 +57,20 @@ docs/INSTALL.md. Configurá dependencias, plugin local de Codex con sus hooks,
 conexión MCP y habilidad incluida. Integrá docs/AGENTS.jev.md en las instrucciones
 persistentes del proyecto, preservando las existentes. Verificá las cuatro tools
 y los hooks; pedime que revise y confíe los hooks mediante el flujo normal de
-Codex, sin omitir su revisión. Configurá TypeSafe de forma privada, pero mantené
-local el procesamiento de checkpoints aunque la clave API esté configurada.
-No habilites JEV_ALLOW_CHECKPOINT_EGRESS salvo que autorice explícitamente enviar
-extractos de conversación a TypeSafe. Informá si Jev o el fallback local está
-activo y si necesitás que ingrese la clave, confíe los hooks o reinicie Codex.
+Codex, sin omitir su revisión. Configurá de forma privada una sola ruta:
+JEV_PROVIDER=vercel con AI_GATEWAY_API_KEY, o TypeSafe directo (predeterminado)
+con TYPESAFE_API_KEY. Mantené locales los checkpoints aunque exista una clave.
+No habilites JEV_ALLOW_CHECKPOINT_EGRESS salvo autorización explícita para enviar
+extractos de conversación por la ruta elegida. Informá provider_route y method,
+y si necesitás que ingrese la clave, confíe los hooks o reinicie Codex.
 ```
 
-Jev usa una clave de API de TypeSafe y envía a TypeSafe los extractos
-seleccionados de código o logs. Los extractos de conversación para checkpoints
-se mantienen locales, salvo autorización separada. Codex se ocupa de la
-instalación; quizás tengas que ingresar la clave de forma privada, confiar los
-hooks o reiniciar Codex.
+Jev acepta una clave de API de TypeSafe para acceso directo o una clave de
+Vercel AI Gateway para acceso intermediado. En ambos casos, el modelo Jev sigue
+siendo de TypeSafe. Los extractos de conversación para checkpoints se mantienen
+locales, salvo autorización separada. Codex se ocupa de la instalación; quizás
+tengas que ingresar la clave elegida de forma privada, confiar los hooks o
+reiniciar Codex.
 
 <details>
 <summary>Instalación y configuración manual</summary>
@@ -95,17 +97,27 @@ Agregá una entrada al `config.toml` de Codex y sustituí ambas rutas absolutas:
 [mcp_servers.jev]
 command = "node"
 args = ["/absolute/path/to/jev-in-codex/dist/index.js", "--root", "/absolute/path/to/your-project"]
-env_vars = ["TYPESAFE_API_KEY", "JEV_MODEL", "JEV_ALLOW_CHECKPOINT_EGRESS"]
+env_vars = ["JEV_PROVIDER", "TYPESAFE_API_KEY", "AI_GATEWAY_API_KEY", "JEV_MODEL", "JEV_ALLOW_CHECKPOINT_EGRESS"]
 tool_timeout_sec = 90
 ```
 
-Exportá `TYPESAFE_API_KEY` en el entorno que inicia Codex. Obtené la clave
-en TypeSafe; no la incluyas en el control de versiones ni en un prompt. De forma
-opcional, configurá `JEV_MODEL` con el nombre de un modelo fijado; el
-valor predeterminado es `jev-latest`.
+Elegí una sola ruta en el entorno que inicia Codex:
+
+- TypeSafe directo: dejá `JEV_PROVIDER` ausente o fijalo en `typesafe`, y
+  configurá `TYPESAFE_API_KEY`. `JEV_MODEL` es opcional; el valor predeterminado
+  es `jev-latest`.
+- Vercel AI Gateway: fijá `JEV_PROVIDER=vercel` y configurá
+  `AI_GATEWAY_API_KEY`, obtenida en el
+  [panel de AI Gateway](https://vercel.com/docs/ai-gateway/authentication-and-byok).
+  El modelo es `typesafe-ai/jev`; `JEV_MODEL` no altera esta ruta.
+
+No incluyas claves en el control de versiones ni en un prompt. Si ambas claves
+existen, se usa sólo la ruta elegida. Ante un fallo no se cambia automáticamente
+al otro proveedor: el ranking vuelve al fallback local. El MCP sigue ejecutándose
+en tu equipo; no hace falta desplegarlo en Vercel ni dar un token de despliegue.
 
 Los checkpoints usan ranking local incluso si existe la clave. Sólo si querés
-enviar extractos conversacionales a TypeSafe, habilitá por separado
+enviar extractos conversacionales por la ruta seleccionada, habilitá por separado
 `JEV_ALLOW_CHECKPOINT_EGRESS=true` en el entorno del proceso que ejecuta el MCP
 y en el entorno de Codex que ejecuta los hooks. La variable debe permanecer
 ausente si no aprobaste esa divulgación.
@@ -117,11 +129,19 @@ nombre en `env_vars`. Un `--root` explícito tiene precedencia.
 Usá una ruta absoluta al ejecutable de Node si el entorno que inicia Codex no
 puede encontrar `node`.
 
-Sin una clave de TypeSafe, las cuatro herramientas funcionan en **modo de fallback
-local**. Esto permite comprobar la instalación, pero no demuestra la calidad del
-ranking de Jev. El acceso y la facturación habituales de Codex no cambian. Las
-solicitudes de Jev usan una cuenta de API de TypeSafe independiente; esta
-integración no las enruta a través de una suscripción de Codex.
+Sin la clave de la ruta seleccionada, las cuatro herramientas funcionan en
+**modo de fallback local**. Esto permite comprobar la instalación, pero no
+demuestra la calidad del ranking de Jev. El acceso y la facturación habituales
+de Codex no cambian; ninguna de las dos claves viene incluida en una suscripción
+de Codex.
+
+Para verificar la configuración, probá las cuatro herramientas con datos
+sintéticos y compará `provider_route` con `method`: `provider_route=vercel` junto
+con `method=local_fallback` significa que Vercel fue elegido pero Jev no pudo
+puntuar remotamente. Las pruebas simuladas del repositorio validan el enrutamiento
+y el contrato de respuesta sin credenciales; sólo una prueba autenticada con
+datos sintéticos confirma que la cuenta y la clave reales funcionan. Si ambas
+claves están presentes, comprobá que no haya solicitudes al proveedor no elegido.
 
 Consultá la [documentación de MCP para Codex](https://developers.openai.com/codex/mcp/)
 para conocer la configuración y visibilidad del servidor en tu cliente.
@@ -235,7 +255,8 @@ inspeccionar la evidencia circundante antes de actuar.
   provisional, no calibrada.
 - **Fallback:** una clave ausente, errores del proveedor, respuestas inválidas o
   un lote fallido hacen que todo el ranking use coincidencia léxica.
-  `method`, `score_kind`, `fallback_reason` y
+  `provider_route` identifica la ruta configurada (`typesafe` o `vercel`), no
+  prueba que haya ocurrido una solicitud remota. `method`, `score_kind`, `fallback_reason` y
   `api_requests` lo hacen visible. Las puntuaciones locales no son
   probabilidades del modelo. Las respuestas exitosas identifican el modelo del
   proveedor cuando se informa. Las puntuaciones son orientativas en ambos modos.
@@ -278,28 +299,35 @@ inspeccionar la evidencia circundante antes de actuar.
 
 ## Tratamiento de datos
 
-Con `TYPESAFE_API_KEY` configurada, los objetivos, las descripciones de
-capacidades suministradas y los extractos preseleccionados de código o logs se
-envían por HTTPS a `https://api.typesafe.ai/v1/systemone`. La búsqueda
-primero lee los archivos localmente y sólo envía su lista corta. El triage lee y
-agrupa el rango solicitado localmente antes de enviar su lista corta. No se
-proporciona una anulación del endpoint remoto.
+Con `JEV_PROVIDER=typesafe` (predeterminado) y `TYPESAFE_API_KEY`, los objetivos,
+las descripciones de capacidades y los extractos preseleccionados de código o
+logs se envían por HTTPS a `https://api.typesafe.ai/v1/systemone`. Con
+`JEV_PROVIDER=vercel` y `AI_GATEWAY_API_KEY`, esos datos se envían a
+`https://ai-gateway.vercel.sh/typesafe/v1/systemone`; Vercel AI Gateway los
+procesa a través del modelo Jev de TypeSafe. Vercel proporciona acceso y
+facturación, pero no evita que TypeSafe procese el contenido. La búsqueda lee
+los archivos localmente y sólo envía su lista corta; el triage lee y agrupa el
+rango solicitado localmente antes de enviar su lista corta. Los endpoints son
+fijos y no se proporciona una anulación.
 
 Los transcripts de Codex se leen localmente sólo desde el hook `PreCompact`; el
 hook conserva exclusivamente los pasajes seleccionados en el directorio privado
 del plugin y los entrega como contexto no confiable tras la compactación nativa.
-La clave TypeSafe no autoriza ese envío: el ranking del checkpoint sigue local,
-salvo que el usuario habilite de forma explícita `JEV_ALLOW_CHECKPOINT_EGRESS`.
+Ninguna de las dos claves autoriza ese envío: el ranking del checkpoint sigue
+local, salvo que el usuario habilite de forma explícita
+`JEV_ALLOW_CHECKPOINT_EGRESS=true`. En ese caso se usa únicamente la ruta elegida.
 
 Las exclusiones por nombre de archivo se aplican de mejor esfuerzo y no detectan
 secretos dentro de archivos comunes. Usá la integración sólo con contenido
-autorizado para TypeSafe. El contenido recuperado puede incluir inyección de
-prompts; el ranking no puede establecer que sea seguro ejecutarlo. Este servidor
+autorizado para la ruta seleccionada. El contenido recuperado puede incluir
+inyección de prompts; el ranking no puede establecer que sea seguro ejecutarlo. Este servidor
 es un límite de conveniencia local, no un sandbox frente a modificaciones
 concurrentes y maliciosas del sistema de archivos. No tiene telemetría, caché
 persistente ni registro propio del contenido. El tratamiento de los datos de API
-por parte de TypeSafe se rige por sus propios términos de servicio. Los cuerpos
-de error del proveedor no se exponen en los resultados de las herramientas.
+por parte de TypeSafe y Vercel se rige por sus respectivos términos de servicio.
+No suponemos retención cero, ausencia de entrenamiento ni precios fijos para la
+ruta Vercel; consultá la [ficha de Jev en AI Gateway](https://vercel.com/ai-gateway/models/jev).
+Los cuerpos de error del proveedor no se exponen en los resultados de las herramientas.
 
 ## Revisión de seguridad
 

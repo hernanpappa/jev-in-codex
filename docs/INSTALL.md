@@ -10,17 +10,19 @@ bundled lifecycle hooks), MCP connection, and bundled skill. Add
 docs/AGENTS.jev.md guidance to my project's persistent Codex instructions,
 preserving existing instructions and configuration. Verify all four MCP tools
 and the hook configuration; ask me to review/trust the hooks through Codex's
-normal flow, never bypass hook trust. Configure TypeSafe authentication
-privately; keep checkpoint transcript/excerpt evaluation local by default even
-if the API key is configured. Do not enable JEV_ALLOW_CHECKPOINT_EGRESS unless
-I explicitly authorize sending conversation excerpts to TypeSafe. Report
-whether Jev or local fallback is active, and tell me if you need a private
-API-key entry, hook trust, or a Codex restart.
+normal flow, never bypass hook trust. Select JEV_PROVIDER=vercel with
+AI_GATEWAY_API_KEY, or the default TypeSafe route with TYPESAFE_API_KEY. Configure
+only the selected authentication privately; keep checkpoint transcript/excerpt
+evaluation local by default even if an API key is configured. Do not enable
+JEV_ALLOW_CHECKPOINT_EGRESS unless I explicitly authorize sending conversation
+excerpts through the selected route. Report provider_route and method, and tell
+me if you need a private API-key entry, hook trust, or a Codex restart.
 ```
 
-The agent handles the setup; you supply the TypeSafe key privately when ready.
-With no key, ranking uses a labeled local fallback. The plugin uses a separate
-TypeSafe account for Jev requests; a Codex subscription does not supply that key.
+The agent handles the setup; you supply the selected provider's key privately
+when ready. Without that key, ranking uses a labeled local fallback. A Codex
+subscription does not supply either provider key. Vercel AI Gateway routes
+requests to TypeSafe's Jev model; it does not replace the model provider.
 
 ## Installer guidance for the agent
 
@@ -42,7 +44,8 @@ there is currently no marketplace catalog in this repository.
    entry under `mcpServers` (the source file may contain an empty object). Use
    the resolved absolute Node executable. Set its arguments to the absolute
    `dist/index.js` path followed by `--root` and the absolute coding-project
-   path. Set `env_vars` to `TYPESAFE_API_KEY`, `JEV_MODEL`, and
+   path. Set `env_vars` to `JEV_PROVIDER`, `TYPESAFE_API_KEY`,
+   `AI_GATEWAY_API_KEY`, `JEV_MODEL`, and
    `JEV_ALLOW_CHECKPOINT_EGRESS`; leave the last variable unset unless the user
    separately authorizes remote transcript scoring. Set `tool_timeout_sec` to
    90. These machine-specific paths belong in the local
@@ -66,14 +69,17 @@ there is currently no marketplace catalog in this repository.
    has reviewed/trusted them. Plugin listing alone does not prove the server or
    hooks run. If tools become available only in a new session, say so and finish
    that check there.
-7. Give the user private instructions for setting the key in the environment
+7. Give the user private instructions for setting the selected key in the
+   environment
    that launches Codex. Never ask for it in chat, print it, or write its value
    into the repository or marketplace files. A desktop app may need a different
    environment setup than a terminal. A key enables remote scoring for the
    existing selection, search, and triage tools, but does not authorize sending
    conversation checkpoints. Only set `JEV_ALLOW_CHECKPOINT_EGRESS=true` after
-   the user explicitly approves that separate data flow. Start a new Codex
-   thread after installation; relaunch the application if its environment changed.
+   the user explicitly approves that separate data flow to the selected route.
+   Set the same `JEV_PROVIDER` and selected key in the hooks' environment;
+   MCP `env_vars` alone does not configure hooks. Start a new Codex thread after
+   installation; relaunch the application if its environment changed.
 
 A minimal catalog for a **new dedicated local marketplace** is:
 
@@ -143,12 +149,22 @@ Start a new thread and ask:
 > small synthetic catalog to check whether ranking is using Jev or local fallback,
 > then use jev_create_checkpoint with synthetic history and verify that it stays local.
 
-A key-free check should report `method: local_fallback`. After configuring a
-working key, the synthetic check should report `method: jev`; failures may still
-produce explicit fallback. Do not use private source or logs for the first test.
+A key-free check should report `method: local_fallback` and the configured
+`provider_route`. After configuring a working key, a synthetic authenticated
+check should report `method: jev`; failures may still produce explicit fallback.
+The repository's simulated tests prove request routing and response handling,
+not that either real account is authorized. With both keys present, verify the
+selected `provider_route` and that no request reaches the other destination.
+Do not use private source or logs for the first test.
 
-Only enable Jev for a project whose selected contents may be sent to TypeSafe.
+Only enable Jev for a project whose selected contents may be sent directly to
+TypeSafe, or through Vercel AI Gateway to TypeSafe when that route is selected.
 The filename denylist does not detect secrets embedded in ordinary files.
+The MCP still runs locally; no Vercel deployment or deployment token is needed.
+Get a local-use AI Gateway key from the
+[Vercel AI Gateway dashboard](https://vercel.com/docs/ai-gateway/authentication-and-byok).
+Do not assume zero retention, no training, or a fixed price for either route;
+review current provider terms and [Jev's gateway listing](https://vercel.com/ai-gateway/models/jev).
 
 To remove the plugin, use `codex plugin remove jev-in-codex@jev-local` (substitute
 your marketplace name). Remove a dedicated marketplace only if nothing else uses

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createCheckpoint, MAX_CHECKPOINT_REMOTE_CANDIDATES } from './checkpoint.js';
 import { consumeCheckpoint, loadCheckpoint, newStoredCheckpoint, saveCheckpoint } from './checkpoint-store.js';
 import { Jev } from './jev.js';
+import { resolveJevProvider } from './provider.js';
 import { readTranscriptTail } from './transcript.js';
 
 const AUTO_OBJECTIVE = 'Preservar decisiones, restricciones, acuerdos, objetivo, tarea, estado, trabajo actual, preguntas pendientes y preferencias del usuario para continuar después de la compactación. Preserve decisions, constraints, agreements, task, current work, open questions, and user preferences needed to continue after compaction.';
@@ -26,10 +27,14 @@ async function preCompact(event: z.infer<typeof hookEventSchema>, env: HookEnvir
   const transcript = await readTranscriptTail(event.transcript_path);
   if (!transcript || transcript.messages.length === 0) return;
   const projectPath = await realpath(event.cwd);
+  let configured: Jev | undefined;
+  try { configured = new Jev({ ...resolveJevProvider(env), timeoutMs: 1500 }); }
+  catch { /* Invalid provider: keep the checkpoint local and let compaction continue. */ }
+  const allowRemote = Boolean(configured) && env.JEV_ALLOW_CHECKPOINT_EGRESS === 'true';
   const selection = await createCheckpoint({ objective: AUTO_OBJECTIVE, messages: transcript.messages, limit: 8,
-    jev: dependencies.jev ?? new Jev({ apiKey: env.TYPESAFE_API_KEY, model: env.JEV_MODEL, timeoutMs: 1500 }),
-    allowRemote: env.JEV_ALLOW_CHECKPOINT_EGRESS === 'true',
-    candidateLimit: env.JEV_ALLOW_CHECKPOINT_EGRESS === 'true' ? MAX_CHECKPOINT_REMOTE_CANDIDATES : undefined,
+    jev: configured ? (dependencies.jev ?? configured) : new Jev(),
+    allowRemote,
+    candidateLimit: allowRemote ? MAX_CHECKPOINT_REMOTE_CANDIDATES : undefined,
     coverage: transcript.coverage });
   if (selection.results.length === 0) return;
   const stored = newStoredCheckpoint({ sessionId: event.session_id, projectPath, objective: AUTO_OBJECTIVE, now,

@@ -11,6 +11,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 const project = fileURLToPath(new URL('..', import.meta.url));
 const fakeKey = 'local-test-key-not-a-secret';
+const fakeGatewayKey = 'local-gateway-key-not-a-secret';
 type RequestBody = {
   model: string;
   state: { objective: string; candidates: { id: string; text: string }[] };
@@ -28,12 +29,12 @@ function scored(body: RequestBody, score: (id: string, text: string) => number):
   } };
 }
 
-function validateRequest(req: IncomingMessage, body: RequestBody) {
+function validateRequest(req: IncomingMessage, body: RequestBody, route: 'typesafe' | 'vercel') {
   assert.equal(req.method, 'POST');
   assert.equal(req.url, '/v1/systemone');
-  assert.equal(req.headers.authorization, `Bearer ${fakeKey}`);
+  assert.equal(req.headers.authorization, `Bearer ${route === 'vercel' ? fakeGatewayKey : fakeKey}`);
   assert.equal(req.headers['content-type'], 'application/json');
-  assert.equal(body.model, 'jev-test-requested');
+  assert.equal(body.model, route === 'vercel' ? 'typesafe-ai/jev' : 'jev-test-requested');
   assert.ok(body.state.objective.length > 0);
   assert.ok(body.state.candidates.length >= 1 && body.state.candidates.length <= 4);
   assert.deepEqual(Object.keys(body.questions), body.state.candidates.map((_, i) => `q${i}`));
@@ -45,7 +46,7 @@ function validateRequest(req: IncomingMessage, body: RequestBody) {
   });
 }
 
-test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout: 30000 }, async t => {
+for (const route of ['typesafe', 'vercel'] as const) test(`compiled MCP server ↔ local simulated ${route} HTTP route`, { timeout: 30000 }, async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'jev-e2e-'));
   const requests: RequestBody[] = [];
   const providerErrors: unknown[] = [];
@@ -57,7 +58,7 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
       const raw = Buffer.concat(chunks);
       assert.ok(raw.length <= 28000);
       const body: RequestBody = JSON.parse(raw.toString('utf8'));
-      validateRequest(req, body);
+      validateRequest(req, body, route);
       requests.push(body);
       const reply = handler(body);
       if (reply.stall) return; // Exercise the production fetch timeout and abort.
@@ -77,8 +78,9 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     args: ['--import', path.join(project, 'test/fixtures/local-typesafe.mjs'),
       path.join(project, 'dist/index.js'), '--root', root],
     // Explicit allowlist: never inherit a real key or the user's NODE_OPTIONS.
-    env: { PATH: process.env.PATH ?? '', TYPESAFE_API_KEY: fakeKey,
-      JEV_MODEL: 'jev-test-requested', JEV_TEST_TYPESAFE_URL: `http://127.0.0.1:${address.port}/v1/systemone` },
+    env: { PATH: process.env.PATH ?? '', JEV_PROVIDER: route, TYPESAFE_API_KEY: fakeKey,
+      AI_GATEWAY_API_KEY: fakeGatewayKey, JEV_MODEL: 'jev-test-requested',
+      JEV_TEST_PROVIDER_ROUTE: route, JEV_TEST_TYPESAFE_URL: `http://127.0.0.1:${address.port}/v1/systemone` },
     stderr: 'pipe',
   });
   let stderr = '';
@@ -113,6 +115,7 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     const before = requests.length;
     const result = await call('jev_select_capability', { objective: 'Inspect database state', candidates: catalog, limit: 6 });
     assert.equal(result.method, 'jev');
+    assert.equal(result.provider_route, route);
     assert.equal(result.score_kind, 'noul');
     assert.equal(result.model, 'jev-simulated');
     assert.equal(result.recommendation, 'tool-5');
@@ -129,6 +132,7 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     const before = requests.length;
     const result = await call('jev_search', { question: 'database', scope: ['src'], limit: 2 });
     assert.equal(result.method, 'jev');
+    assert.equal(result.provider_route, route);
     assert.equal(result.results[0].path, 'src/b.ts');
     assert.equal(result.results[0].text, '// database transaction rollback');
     assert.equal(result.results[0].start_line, 1);
@@ -145,6 +149,7 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     handler = body => scored(body, (_id, text) => text.includes('rollback failure') ? 0.97 : 0.05);
     const result = await call('jev_triage', { question: 'database', artifact_path: 'output.txt', limit: 1 });
     assert.equal(result.method, 'jev');
+    assert.equal(result.provider_route, route);
     assert.equal(result.results[0].start_line, 31);
     assert.equal(result.results[0].end_line, 60);
     assert.equal(result.results[0].text, lines.slice(30).join('\n'));
@@ -159,6 +164,7 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     const local = await call('jev_create_checkpoint', { objective: 'preserve database decision',
       messages: [{ id: 'turn-db', role: 'user', text: 'Keep the database rollback decision.' }] });
     assert.equal(local.method, 'local_fallback');
+    assert.equal(local.provider_route, route);
     assert.equal(local.api_requests, 0);
     assert.equal(requests.length, before);
   });
@@ -176,6 +182,7 @@ test('compiled MCP server ↔ local simulated TypeSafe HTTP provider', { timeout
     handler = body => ++batch === 1 ? scored(body, () => 0.999) : { status: 429, raw: `Sensitive provider detail: ${fakeKey}` };
     const result = await call('jev_select_capability', { objective: 'database', candidates: catalog, limit: 6 });
     assert.equal(result.method, 'local_fallback');
+    assert.equal(result.provider_route, route);
     assert.equal(result.score_kind, 'lexical_overlap');
     assert.equal(result.api_requests, 2);
     assert.match(result.fallback_reason, /HTTP 429/);
