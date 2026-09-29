@@ -117,10 +117,10 @@ test('hooks fail open for invalid event data, absent transcript, or missing plug
     transcript_path: fx.transcript }, { ...fx.env, PLUGIN_DATA: path.join(fx.root, 'missing') }), {});
 });
 
-test('a key alone never sends transcript text; only the separate opt-in permits bounded TypeSafe scoring', async t => {
+test('a TypeSafe key alone never sends transcript text; only the separate opt-in permits bounded TypeSafe scoring', async t => {
   const fx = await fixture(t);
   let requests = 0;
-  const jev = new Jev({ apiKey: 'synthetic-key', fetch: async (_url, init) => {
+  const jev = new Jev({ ...resolveJevProvider({ JEV_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'synthetic-key' }), fetch: async (_url, init) => {
     requests++;
     const body = JSON.parse(init!.body as string);
     assert.ok(body.state.candidates.every((candidate: { text: string }) => candidate.text.length <= 1000));
@@ -184,6 +184,37 @@ test('Vercel hook transcript egress requires opt-in and never switches to TypeSa
   await handleHookEvent({ ...event, session_id: 'vercel-remote' },
     { ...env, JEV_ALLOW_CHECKPOINT_EGRESS: 'true' }, Date.now(), { jev });
   assert.equal(calls, 1);
+});
+
+test('OpenRouter is the default hook route but transcript egress stays local without its separate opt-in', async t => {
+  const fx = await fixture(t);
+  let calls = 0;
+  const env = { ...fx.env, OPENROUTER_API_KEY: 'openrouter-key', TYPESAFE_API_KEY: 'direct-key', AI_GATEWAY_API_KEY: 'gateway-key' };
+  const jev = new Jev({ ...resolveJevProvider(env), fetch: async (url, init) => {
+    calls++;
+    assert.equal(url, 'https://openrouter.ai/api/alpha/decisions');
+    assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer openrouter-key');
+    const body = JSON.parse(init!.body as string);
+    assert.ok(body.state.candidates.every((candidate: { text: string }) => candidate.text.length <= 1000));
+    return Response.json({ model: '~typesafe/jev-latest', answers: Object.fromEntries(Object.keys(body.questions).map(id =>
+      [id, { type: 'noul', noul: 0.9 }])) });
+  } });
+  const event = { hook_event_name: 'PreCompact', trigger: 'auto', session_id: 'openrouter-local',
+    cwd: fx.project, transcript_path: fx.transcript };
+  await handleHookEvent(event, env, Date.now(), { jev });
+  assert.equal(calls, 0);
+  const local = await handleHookEvent({ hook_event_name: 'SessionStart', source: 'compact',
+    session_id: 'openrouter-local', cwd: fx.project }, env);
+  assert.match(local.output ?? '', /local_fallback/);
+  await local.afterOutput?.();
+
+  await handleHookEvent({ ...event, session_id: 'openrouter-opt-in' },
+    { ...env, JEV_ALLOW_CHECKPOINT_EGRESS: 'true' }, Date.now(), { jev });
+  assert.equal(calls, 1);
+  const remote = await handleHookEvent({ hook_event_name: 'SessionStart', source: 'compact',
+    session_id: 'openrouter-opt-in', cwd: fx.project }, env);
+  assert.match(remote.output ?? '', /jev/);
+  await remote.afterOutput?.();
 });
 
 test('stored checkpoints expire after the configured TTL', async t => {

@@ -13,26 +13,29 @@ test('missing key is an explicit offline fallback with no request', async () => 
   assert.equal(result.score_kind, 'lexical_overlap');
   assert.equal(result.ranked[0].id, 'a');
   assert.equal(result.api_requests, 0);
-  assert.equal(result.provider_route, 'typesafe');
+  assert.equal(result.provider_route, 'openrouter');
 });
 
-test('Jev response controls rank and each question references its own candidate', async () => {
-  const result = await new Jev({ apiKey: 'test-key', fetch: fake((body, init) => {
-    assert.equal(body.model, 'jev-latest');
+test('OpenRouter Decisions API response controls rank and each question references its own candidate', async () => {
+  const result = await new Jev({ apiKey: 'test-key', fetch: fake((body, init, url) => {
+    assert.equal(body.model, '~typesafe/jev-latest');
+    assert.equal(String(init.method), 'POST');
+    assert.equal(url, 'https://openrouter.ai/api/alpha/decisions');
     assert.equal((init.headers as Record<string, string>).Authorization, 'Bearer test-key');
     assert.match(body.questions.q1.instructions, /candidates\[1\]/);
     assert.equal(body.state.objective, 'database queries');
     return Response.json({ model: 'jev-test', answers: { q0: { type: 'noul', noul: 0.1 }, q1: { type: 'noul', noul: 0.9 } } });
   }) }).rank('database queries', candidates);
   assert.equal(result.method, 'jev');
-  assert.equal(result.provider_route, 'typesafe');
+  assert.equal(result.provider_route, 'openrouter');
   assert.equal(result.model, 'jev-test');
   assert.equal(result.ranked[0].id, 'b');
 });
 
 test('selected route alone determines endpoint, bearer key and request model', async () => {
-  const environment = { TYPESAFE_API_KEY: 'direct-key', AI_GATEWAY_API_KEY: 'gateway-key', JEV_MODEL: 'direct-custom' };
+  const environment = { OPENROUTER_API_KEY: 'openrouter-key', TYPESAFE_API_KEY: 'direct-key', AI_GATEWAY_API_KEY: 'gateway-key', JEV_MODEL: 'direct-custom' };
   for (const [route, endpoint, bearer, model] of [
+    ['openrouter', 'https://openrouter.ai/api/alpha/decisions', 'openrouter-key', '~typesafe/jev-latest'],
     ['typesafe', 'https://api.typesafe.ai/v1/systemone', 'direct-key', 'direct-custom'],
     ['vercel', 'https://ai-gateway.vercel.sh/typesafe/v1/systemone', 'gateway-key', 'typesafe-ai/jev'],
   ] as const) {
@@ -90,8 +93,8 @@ test('network exceptions are sanitized', async () => {
   assert.ok(!JSON.stringify(result).includes('secret'));
 });
 
-test('both routes bound batches, bytes, timeout, redirect policy and reject malformed Noul answers', async () => {
-  for (const route of ['typesafe', 'vercel'] as const) {
+test('all routes bound batches, bytes, timeout, redirect policy and reject malformed Noul answers', async () => {
+  for (const route of ['openrouter', 'typesafe', 'vercel'] as const) {
     let requests = 0;
     const items = Array.from({ length: 5 }, (_, i) => ({ id: String(i), text: 'database' }));
     const fetcher = fake((body, init) => {
@@ -129,31 +132,35 @@ test('both routes bound batches, bytes, timeout, redirect policy and reject malf
   }
 });
 
-test('Vercel missing key or later failure never switches to a configured TypeSafe key', async () => {
-  const missing = resolveJevProvider({ JEV_PROVIDER: 'vercel', TYPESAFE_API_KEY: 'direct-key' });
-  let calls = 0;
-  const absent = await new Jev({ ...missing, fetch: fake(() => { calls++; throw new Error('must not fetch'); }) })
-    .rank('database', candidates);
-  assert.equal(absent.method, 'local_fallback');
-  assert.equal(absent.provider_route, 'vercel');
-  assert.match(absent.fallback_reason ?? '', /AI_GATEWAY_API_KEY/);
-  assert.equal(absent.api_requests, 0);
-  assert.equal(calls, 0);
-
+test('missing selected keys and later failures never switch to another configured provider', async () => {
   const items = Array.from({ length: 6 }, (_, i) => ({ id: String(i), text: i === 5 ? 'database' : 'other' }));
-  const configured = resolveJevProvider({ JEV_PROVIDER: 'vercel', AI_GATEWAY_API_KEY: 'gateway-key', TYPESAFE_API_KEY: 'direct-key' });
-  const failed = await new Jev({ ...configured, fetch: fake((body, _init, url) => {
-    calls++;
-    assert.equal(url, 'https://ai-gateway.vercel.sh/typesafe/v1/systemone');
-    if (calls === 2) return new Response('sensitive body direct-key gateway-key', { status: 503 });
-    return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map(id =>
-      [id, { type: 'noul', noul: 0.99 }])) });
-  }) }).rank('database', items);
-  assert.equal(failed.method, 'local_fallback');
-  assert.equal(failed.provider_route, 'vercel');
-  assert.equal(failed.ranked[0].id, '5');
-  assert.equal(failed.api_requests, 2);
-  assert.equal(calls, 2);
-  assert.ok(!JSON.stringify(failed).includes('direct-key'));
-  assert.ok(!JSON.stringify(failed).includes('gateway-key'));
+  const keys = { OPENROUTER_API_KEY: 'openrouter-key', TYPESAFE_API_KEY: 'direct-key', AI_GATEWAY_API_KEY: 'gateway-key' };
+  for (const [route, keyName, endpoint] of [
+    ['openrouter', 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/alpha/decisions'],
+    ['typesafe', 'TYPESAFE_API_KEY', 'https://api.typesafe.ai/v1/systemone'],
+    ['vercel', 'AI_GATEWAY_API_KEY', 'https://ai-gateway.vercel.sh/typesafe/v1/systemone'],
+  ] as const) {
+    let calls = 0;
+    const absent = await new Jev({ ...resolveJevProvider({ JEV_PROVIDER: route, ...keys, [keyName]: undefined }),
+      fetch: fake(() => { calls++; throw new Error('must not fetch'); }) }).rank('database', candidates);
+    assert.equal(absent.method, 'local_fallback');
+    assert.equal(absent.provider_route, route);
+    assert.match(absent.fallback_reason ?? '', new RegExp(keyName));
+    assert.equal(absent.api_requests, 0);
+    assert.equal(calls, 0);
+
+    const failed = await new Jev({ ...resolveJevProvider({ JEV_PROVIDER: route, ...keys }), fetch: fake((body, _init, url) => {
+      calls++;
+      assert.equal(url, endpoint);
+      if (calls === 2) return new Response('sensitive body openrouter-key direct-key gateway-key', { status: 503 });
+      return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map(id =>
+        [id, { type: 'noul', noul: 0.99 }])) });
+    }) }).rank('database', items);
+    assert.equal(failed.method, 'local_fallback');
+    assert.equal(failed.provider_route, route);
+    assert.equal(failed.ranked[0].id, '5');
+    assert.equal(failed.api_requests, 2);
+    assert.equal(calls, 2);
+    for (const secret of Object.values(keys)) assert.ok(!JSON.stringify(failed).includes(secret));
+  }
 });

@@ -10,9 +10,10 @@ bundled lifecycle hooks), MCP connection, and bundled skill. Add
 docs/AGENTS.jev.md guidance to my project's persistent Codex instructions,
 preserving existing instructions and configuration. Verify all four MCP tools
 and the hook configuration; ask me to review/trust the hooks through Codex's
-normal flow, never bypass hook trust. Select JEV_PROVIDER=vercel with
-AI_GATEWAY_API_KEY, or the default TypeSafe route with TYPESAFE_API_KEY. Configure
-only the selected authentication privately; keep checkpoint transcript/excerpt
+normal flow, never bypass hook trust. Use OpenRouter by default with
+OPENROUTER_API_KEY, or explicitly select JEV_PROVIDER=typesafe with
+TYPESAFE_API_KEY or JEV_PROVIDER=vercel with AI_GATEWAY_API_KEY. Configure only
+the selected authentication privately; keep checkpoint transcript/excerpt
 evaluation local by default even if an API key is configured. Do not enable
 JEV_ALLOW_CHECKPOINT_EGRESS unless I explicitly authorize sending conversation
 excerpts through the selected route. Report provider_route and method, and tell
@@ -21,8 +22,9 @@ me if you need a private API-key entry, hook trust, or a Codex restart.
 
 The agent handles the setup; you supply the selected provider's key privately
 when ready. Without that key, ranking uses a labeled local fallback. A Codex
-subscription does not supply either provider key. Vercel AI Gateway routes
-requests to TypeSafe's Jev model; it does not replace the model provider.
+subscription does not supply a provider key. OpenRouter and Vercel AI Gateway
+route requests to TypeSafe's Jev model; TypeSafe direct remains available as an
+explicit route.
 
 ## Installer guidance for the agent
 
@@ -44,8 +46,8 @@ there is currently no marketplace catalog in this repository.
    entry under `mcpServers` (the source file may contain an empty object). Use
    the resolved absolute Node executable. Set its arguments to the absolute
    `dist/index.js` path followed by `--root` and the absolute coding-project
-   path. Set `env_vars` to `JEV_PROVIDER`, `TYPESAFE_API_KEY`,
-   `AI_GATEWAY_API_KEY`, `JEV_MODEL`, and
+   path. Set `env_vars` to `JEV_PROVIDER`, `OPENROUTER_API_KEY`,
+   `TYPESAFE_API_KEY`, `AI_GATEWAY_API_KEY`, `JEV_MODEL`, and
    `JEV_ALLOW_CHECKPOINT_EGRESS`; leave the last variable unset unless the user
    separately authorizes remote transcript scoring. Set `tool_timeout_sec` to
    90. These machine-specific paths belong in the local
@@ -80,6 +82,17 @@ there is currently no marketplace catalog in this repository.
    Set the same `JEV_PROVIDER` and selected key in the hooks' environment;
    MCP `env_vars` alone does not configure hooks. Start a new Codex thread after
    installation; relaunch the application if its environment changed.
+
+### Migrate an existing installation
+
+Installations that relied on an absent `JEV_PROVIDER` previously used TypeSafe
+directly; after updating they use OpenRouter and need `OPENROUTER_API_KEY` for
+remote scoring. To preserve the previous TypeSafe behavior, set
+`JEV_PROVIDER=typesafe` and `TYPESAFE_API_KEY` explicitly in both the MCP and
+hook launch environments. An existing launcher that sets `JEV_PROVIDER=vercel`
+continues to select Vercel until that setting is explicitly changed; changing
+the source default alone does not update a separately installed plugin or its
+launcher. Configure only the selected provider's key, privately.
 
 A minimal catalog for a **new dedicated local marketplace** is:
 
@@ -153,18 +166,21 @@ A key-free check should report `method: local_fallback` and the configured
 `provider_route`. After configuring a working key, a synthetic authenticated
 check should report `method: jev`; failures may still produce explicit fallback.
 The repository's simulated tests prove request routing and response handling,
-not that either real account is authorized. With both keys present, verify the
-selected `provider_route` and that no request reaches the other destination.
+not that a real account is authorized. If multiple keys are present, verify the
+selected `provider_route` and that no request reaches another destination.
 Do not use private source or logs for the first test.
 
-Only enable Jev for a project whose selected contents may be sent directly to
-TypeSafe, or through Vercel AI Gateway to TypeSafe when that route is selected.
+Only enable Jev for a project whose selected contents may be sent to OpenRouter
+for processing by TypeSafe's Jev model, directly to TypeSafe, or through Vercel
+AI Gateway to TypeSafe, according to the selected route. The OpenRouter route
+uses `POST https://openrouter.ai/api/alpha/decisions` and
+`~typesafe/jev-latest` by default.
 The filename denylist does not detect secrets embedded in ordinary files.
 The MCP still runs locally; no Vercel deployment or deployment token is needed.
 Get a local-use AI Gateway key from the
 [Vercel AI Gateway dashboard](https://vercel.com/docs/ai-gateway/authentication-and-byok).
-Do not assume zero retention, no training, or a fixed price for either route;
-review current provider terms and [Jev's gateway listing](https://vercel.com/ai-gateway/models/jev).
+Do not assume zero retention, no training, or a fixed price for any route;
+review the current terms of the selected service.
 
 To remove the plugin, use `codex plugin remove jev-in-codex@jev-local` (substitute
 your marketplace name). Remove a dedicated marketplace only if nothing else uses

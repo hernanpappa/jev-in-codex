@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 const project = fileURLToPath(new URL('..', import.meta.url));
+const fakeOpenRouterKey = 'local-openrouter-key-not-a-secret';
 const fakeKey = 'local-test-key-not-a-secret';
 const fakeGatewayKey = 'local-gateway-key-not-a-secret';
 type RequestBody = {
@@ -29,12 +30,16 @@ function scored(body: RequestBody, score: (id: string, text: string) => number):
   } };
 }
 
-function validateRequest(req: IncomingMessage, body: RequestBody, route: 'typesafe' | 'vercel') {
+type Route = 'openrouter' | 'typesafe' | 'vercel';
+
+function validateRequest(req: IncomingMessage, body: RequestBody, route: Route) {
   assert.equal(req.method, 'POST');
-  assert.equal(req.url, '/v1/systemone');
-  assert.equal(req.headers.authorization, `Bearer ${route === 'vercel' ? fakeGatewayKey : fakeKey}`);
+  assert.equal(req.url, route === 'openrouter' ? '/api/alpha/decisions' : '/v1/systemone');
+  assert.equal(req.headers.authorization, `Bearer ${route === 'openrouter' ? fakeOpenRouterKey :
+    route === 'vercel' ? fakeGatewayKey : fakeKey}`);
   assert.equal(req.headers['content-type'], 'application/json');
-  assert.equal(body.model, route === 'vercel' ? 'typesafe-ai/jev' : 'jev-test-requested');
+  assert.equal(body.model, route === 'openrouter' ? '~typesafe/jev-latest' :
+    route === 'vercel' ? 'typesafe-ai/jev' : 'jev-test-requested');
   assert.ok(body.state.objective.length > 0);
   assert.ok(body.state.candidates.length >= 1 && body.state.candidates.length <= 4);
   assert.deepEqual(Object.keys(body.questions), body.state.candidates.map((_, i) => `q${i}`));
@@ -46,7 +51,7 @@ function validateRequest(req: IncomingMessage, body: RequestBody, route: 'typesa
   });
 }
 
-for (const route of ['typesafe', 'vercel'] as const) test(`compiled MCP server â†” local simulated ${route} HTTP route`, { timeout: 30000 }, async t => {
+for (const route of ['openrouter', 'typesafe', 'vercel'] as const) test(`compiled MCP server â†” local simulated ${route} HTTP route`, { timeout: 30000 }, async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'jev-e2e-'));
   const requests: RequestBody[] = [];
   const providerErrors: unknown[] = [];
@@ -79,8 +84,8 @@ for (const route of ['typesafe', 'vercel'] as const) test(`compiled MCP server â
       path.join(project, 'dist/index.js'), '--root', root],
     // Explicit allowlist: never inherit a real key or the user's NODE_OPTIONS.
     env: { PATH: process.env.PATH ?? '', JEV_PROVIDER: route, TYPESAFE_API_KEY: fakeKey,
-      AI_GATEWAY_API_KEY: fakeGatewayKey, JEV_MODEL: 'jev-test-requested',
-      JEV_TEST_PROVIDER_ROUTE: route, JEV_TEST_TYPESAFE_URL: `http://127.0.0.1:${address.port}/v1/systemone` },
+      OPENROUTER_API_KEY: fakeOpenRouterKey, AI_GATEWAY_API_KEY: fakeGatewayKey, JEV_MODEL: 'jev-test-requested',
+      JEV_TEST_PROVIDER_ROUTE: route, JEV_TEST_PROVIDER_URL: `http://127.0.0.1:${address.port}${route === 'openrouter' ? '/api/alpha/decisions' : '/v1/systemone'}` },
     stderr: 'pipe',
   });
   let stderr = '';
@@ -107,6 +112,12 @@ for (const route of ['typesafe', 'vercel'] as const) test(`compiled MCP server â
   await t.test('handshake exposes all four tools', async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), ['jev_create_checkpoint', 'jev_search', 'jev_select_capability', 'jev_triage']);
+    const routeName = route === 'openrouter' ? 'OpenRouter' : route === 'typesafe' ? 'TypeSafe direct' : 'Vercel AI Gateway';
+    for (const tool of tools) {
+      assert.ok(tool.description?.includes(routeName));
+      assert.ok(tool.description?.includes('provider_route'));
+      assert.ok(tool.description?.includes('local_fallback'));
+    }
     assert.equal(requests.length, 0);
   });
 

@@ -2,9 +2,11 @@ import { z } from 'zod';
 import type { JevProviderRoute } from './provider.js';
 
 const ENDPOINTS: Record<JevProviderRoute, string> = {
+  openrouter: 'https://openrouter.ai/api/alpha/decisions',
   typesafe: 'https://api.typesafe.ai/v1/systemone',
   vercel: 'https://ai-gateway.vercel.sh/typesafe/v1/systemone',
 };
+const OPENROUTER_MODEL = '~typesafe/jev-latest';
 
 export type Candidate = { id: string; text: string };
 export type Ranked = Candidate & { score: number };
@@ -39,8 +41,12 @@ const responseSchema = z.object({
 export class Jev {
   constructor(private readonly options: JevOptions = {}) {}
 
-  private get route(): JevProviderRoute { return this.options.providerRoute ?? 'typesafe'; }
-  private get model(): string { return this.route === 'vercel' ? 'typesafe-ai/jev' : (this.options.model ?? 'jev-latest'); }
+  private get route(): JevProviderRoute { return this.options.providerRoute ?? 'openrouter'; }
+  get providerRoute(): JevProviderRoute { return this.route; }
+  private get model(): string {
+    if (this.route === 'openrouter') return OPENROUTER_MODEL;
+    return this.route === 'vercel' ? 'typesafe-ai/jev' : (this.options.model ?? 'jev-latest');
+  }
 
   rankLocal(question: string, candidates: Candidate[], reason = 'Local ranking was explicitly selected.'): Ranking {
     return {
@@ -54,7 +60,11 @@ export class Jev {
   async rank(question: string, candidates: Candidate[]): Promise<Ranking> {
     let requests = 0;
     const local = (reason: string): Ranking => ({ ...this.rankLocal(question, candidates, reason), api_requests: requests });
-    if (!this.options.apiKey) return local(`${this.route === 'vercel' ? 'AI_GATEWAY_API_KEY' : 'TYPESAFE_API_KEY'} is not configured.`);
+    if (!this.options.apiKey) {
+      const keyName = this.route === 'openrouter' ? 'OPENROUTER_API_KEY' :
+        this.route === 'vercel' ? 'AI_GATEWAY_API_KEY' : 'TYPESAFE_API_KEY';
+      return local(`${keyName} is not configured.`);
+    }
     if (candidates.length === 0) return { provider_route: this.route, method: 'jev', score_kind: 'noul', api_requests: 0, ranked: [] };
     const ranked: Ranked[] = [];
     let actualModel: string | undefined;

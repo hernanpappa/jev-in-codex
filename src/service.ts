@@ -5,6 +5,8 @@ import { createCheckpoint, type CheckpointCoverage, type CheckpointMessage } fro
 export class Service {
   constructor(private readonly workspace: Workspace, private readonly jev: Jev, private readonly allowCheckpointRemote = false) {}
 
+  get providerRoute() { return this.jev.providerRoute; }
+
   checkpoint(objective: string, messages: CheckpointMessage[], limit: number, coverage?: CheckpointCoverage) {
     return createCheckpoint({ objective, messages, limit, jev: this.jev, allowRemote: this.allowCheckpointRemote, coverage });
   }
