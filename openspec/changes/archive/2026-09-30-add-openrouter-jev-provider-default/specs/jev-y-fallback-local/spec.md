@@ -1,10 +1,6 @@
-# Especificación: Jev y fallback local
+# Spec Delta
 
-## Purpose
-
-Definir la frontera entre la evaluación opcional de relevancia en TypeSafe y el ranking léxico local, así como la validación y metadatos necesarios para distinguir ambos métodos.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: La evaluación remota usa un destino y un contrato fijos
 
@@ -22,10 +18,6 @@ El servidor SHALL seleccionar exactamente una ruta mediante `JEV_PROVIDER`: `ope
 - **WHEN** `JEV_PROVIDER=typesafe` o `JEV_PROVIDER=vercel`
 - **THEN** SHALL conservar el endpoint, clave, modelo y contrato de la ruta explícitamente seleccionada sin contactar OpenRouter
 
-#### Scenario: La solicitud excede el límite de bytes
-- **WHEN** el cuerpo preparado supera 28.000 bytes
-- **THEN** SHALL abandonar el ranking remoto y producir fallback local sin enviar ese cuerpo
-
 #### Scenario: Hay tres claves disponibles
 - **WHEN** están presentes las tres credenciales y `JEV_PROVIDER=openrouter`
 - **THEN** SHALL usar sólo `OPENROUTER_API_KEY` para solicitudes a OpenRouter y SHALL no enviar contenido a Vercel ni a TypeSafe directo
@@ -37,6 +29,10 @@ El servidor SHALL seleccionar exactamente una ruta mediante `JEV_PROVIDER`: `ope
 #### Scenario: Se omite el selector en una instalación anterior
 - **WHEN** existe `TYPESAFE_API_KEY` y `JEV_PROVIDER` no está configurado
 - **THEN** SHALL seleccionar OpenRouter y, sin `OPENROUTER_API_KEY`, SHALL usar fallback local; para conservar TypeSafe directo se requiere `JEV_PROVIDER=typesafe`
+
+#### Scenario: La solicitud excede el límite de bytes
+- **WHEN** el cuerpo preparado supera 28.000 bytes
+- **THEN** SHALL abandonar el ranking remoto y producir fallback local sin enviar ese cuerpo
 
 #### Scenario: Selector inválido
 - **WHEN** `JEV_PROVIDER` tiene un valor distinto de las tres rutas admitidas

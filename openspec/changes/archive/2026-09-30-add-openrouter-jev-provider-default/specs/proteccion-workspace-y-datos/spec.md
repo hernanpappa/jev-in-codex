@@ -1,22 +1,6 @@
-# Especificación: Protección del workspace y los datos
+# Spec Delta
 
-## Purpose
-
-Establecer las fronteras de lectura del workspace y de divulgación de datos de Jev, para que el usuario y Codex puedan valorar qué contenido se expone y qué autoridad conserva el servidor.
-
-## Requirements
-
-### Requirement: Las lecturas quedan limitadas al workspace configurado
-
-El servidor SHALL canonizar un workspace explícito y SHALL rechazar rutas absolutas, recorridos fuera de la raíz, destinos canónicos fuera de la raíz, symlinks que escapen de ella y rutas excluidas. SHALL rechazar directorios, archivos no regulares, archivos mayores de 1 MiB, bytes nulos y texto UTF-8 inválido. La lista de exclusión SHALL incluir `.git`, `node_modules`, `dist`, `build`, `vendor`, `.venv`, `.ssh`, `.aws`, `.gnupg`, nombres `.env` y `.env.*`, `.npmrc`, `.netrc`, `credentials` y `credentials.*`, `id_rsa`, `id_ed25519`, y archivos terminados en `.pem`, `.key`, `.p12` o `.pfx` (sin distinguir mayúsculas/minúsculas).
-
-#### Scenario: Se solicita leer una ruta fuera de la raíz
-- **WHEN** una ruta relativa intenta atravesar la raíz o un symlink apunta fuera de ella
-- **THEN** SHALL rechazarla sin devolver contenido del destino externo
-
-#### Scenario: Se solicita un archivo excluido o no textual
-- **WHEN** la ruta corresponde a un nombre sensible, directorio, archivo binario, UTF-8 inválido o archivo mayor de 1 MiB
-- **THEN** SHALL rechazar la lectura antes de producir extractos para el ranking
+## MODIFIED Requirements
 
 ### Requirement: La divulgación a TypeSafe es explícita y la evidencia sigue siendo no confiable
 
@@ -30,6 +14,10 @@ La documentación y habilidad incluidas SHALL advertir que la ruta directa enví
 - **WHEN** el usuario habilita Vercel con `AI_GATEWAY_API_KEY`
 - **THEN** la guía SHALL identificar a Vercel AI Gateway y TypeSafe como servicios que procesan los datos seleccionados
 
+#### Scenario: Se elige la ruta Vercel
+- **WHEN** el usuario configura `JEV_PROVIDER=vercel` y habilita ranking remoto con `AI_GATEWAY_API_KEY`
+- **THEN** la guía SHALL identificar a Vercel AI Gateway y TypeSafe como servicios que procesarán los datos seleccionados, sin prometer retención cero ni ausencia de entrenamiento no verificadas para esa ruta
+
 #### Scenario: Ruta OpenRouter elegida
 - **WHEN** el usuario usa el valor predeterminado OpenRouter con `OPENROUTER_API_KEY`
 - **THEN** la guía SHALL identificar a OpenRouter y TypeSafe como servicios que procesan los datos seleccionados
@@ -42,35 +30,13 @@ La documentación y habilidad incluidas SHALL advertir que la ruta directa enví
 - **WHEN** un archivo de nombre ordinario contiene una credencial
 - **THEN** la documentación SHALL advertir que el filtro por nombre no la detecta y que el usuario debe evitar enviar ese contenido
 
-#### Scenario: Se elige la ruta Vercel
-- **WHEN** el usuario configura `JEV_PROVIDER=vercel` y habilita ranking remoto con `AI_GATEWAY_API_KEY`
-- **THEN** la guía SHALL identificar a Vercel AI Gateway y TypeSafe como servicios que procesarán los datos seleccionados, sin prometer retención cero ni ausencia de entrenamiento no verificadas para esa ruta
-
-### Requirement: El acceso a transcripts se limita a los hooks de Codex y al checkpoint
-La integración automática SHALL leer únicamente la referencia de transcript entregada por un evento de ciclo de vida de Codex, SHALL limitar cantidad y tamaño de datos leídos y SHALL rechazar archivos que no sean regulares o estén fuera del formato admitido. Ese acceso no SHALL ampliar las rutas que las herramientas de búsqueda ordinarias pueden leer ni aceptar una ruta de transcript arbitraria del llamante MCP. SHALL conservar sólo los pasajes acotados del checkpoint en almacenamiento local privado, con retención limitada a la sesión que se reanuda.
-
-#### Scenario: Evento contiene una referencia utilizable
-- **WHEN** Codex entrega al hook una referencia de transcript regular que cumple los límites publicados
-- **THEN** el hook SHALL procesar sólo el contenido acotado necesario para el checkpoint y no SHALL habilitar su lectura por las herramientas generales de workspace
-
-#### Scenario: Referencia ausente, inválida o transcript excesivo
-- **WHEN** el evento no contiene una referencia utilizable o el archivo incumple los límites o formato
-- **THEN** el hook SHALL omitir el checkpoint, descartar cualquier contenido parcial y permitir que Codex continúe normalmente
-
-#### Scenario: Expira la sesión de compactación
-- **WHEN** la sesión asociada al checkpoint deja de ser reanudable o vence la retención configurada
-- **THEN** el sistema SHALL eliminar el checkpoint local asociado y SHALL no conservar el transcript original como copia
-
 ### Requirement: Compartir contenido conversacional con TypeSafe requiere consentimiento específico
+
 El sistema SHALL mantener localmente el contenido del transcript y los checkpoints por defecto. Configurar `TYPESAFE_API_KEY`, `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY` o `JEV_PROVIDER` para las herramientas existentes no SHALL autorizar por sí solo el envío de fragmentos de conversación a TypeSafe, Vercel AI Gateway u OpenRouter. Antes de cualquier envío de texto de transcript o checkpoint, SHALL exigir `JEV_ALLOW_CHECKPOINT_EGRESS=true` como opción explícita y diferenciada, SHALL informar qué contenido se enviará y SHALL permitir desactivar esa divulgación sin deshabilitar la compactación nativa ni el checkpoint local. Si el permiso está activo, SHALL usar exclusivamente la ruta seleccionada.
 
 #### Scenario: Clave TypeSafe configurada sin opt-in de transcript
 - **WHEN** el usuario tiene `TYPESAFE_API_KEY` pero no habilitó el permiso separado
 - **THEN** Jev SHALL generar o devolver checkpoints sin enviar texto conversacional a TypeSafe
-
-#### Scenario: Usuario habilita divulgación de transcript
-- **WHEN** el usuario habilita expresamente `JEV_ALLOW_CHECKPOINT_EGRESS=true` y solicita procesar un historial
-- **THEN** la guía SHALL informar que pasajes acotados salen del equipo y Jev SHALL enviarlos únicamente a la ruta seleccionada para el propósito autorizado
 
 #### Scenario: Clave Vercel configurada sin opt-in de transcript
 - **WHEN** el usuario tiene `AI_GATEWAY_API_KEY` pero no habilitó el permiso separado
@@ -79,3 +45,7 @@ El sistema SHALL mantener localmente el contenido del transcript y los checkpoin
 #### Scenario: Clave OpenRouter configurada sin opt-in de transcript
 - **WHEN** `JEV_PROVIDER` está ausente o vale `openrouter`, existe `OPENROUTER_API_KEY` y no está habilitado el permiso separado
 - **THEN** los checkpoints manuales y hooks SHALL conservar ranking local sin enviar conversación a OpenRouter ni a TypeSafe
+
+#### Scenario: Usuario habilita divulgación de transcript
+- **WHEN** el usuario habilita expresamente `JEV_ALLOW_CHECKPOINT_EGRESS=true` y solicita procesar un historial
+- **THEN** la guía SHALL informar que pasajes acotados salen del equipo y Jev SHALL enviarlos únicamente a la ruta seleccionada para el propósito autorizado
